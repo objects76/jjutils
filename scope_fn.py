@@ -88,8 +88,11 @@ class scope:
 
         def deco(func):
             outcnt=0
-            @functools.wraps(func)
+            # @functools.wraps(func)
             def wrapper(*args, **kwargs):
+                '''
+                scope_fn wrapper func
+                '''
                 if scope._suppress != None:
                     return func(*args, **kwargs)
 
@@ -305,31 +308,9 @@ def disable_stepinto_scope_fn_when_debugging():
 
 
 def test():
-    txt = '''
+    print('-- test --')
+    exit(0)
 
-from loguru import logger # pip install loguru
-# logger.add('logs/log_{time}.log')
-
-from scope_fn import scope
-
-class Struct(object):
-
-def transform_mat(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-    # No padding left or right, only add an extra row
-    return torch.cat([F.pad(R, [0, 0, 0, 1]),
-                      F.pad(t, [0, 0, 0, 1], value=1)], dim=2)
-
-    class c1:
-        def func2(self): pass
-    '''
-
-    # txt2 = re.sub(r'\n([ \t]+)?def\s+\w+', r'\n\g<1>@scope.fn\g<0>', txt)
-        # remove @scope.fn
-
-    txt = re.sub(r'^[ \t]*from scope_fn import scope', '', txt, count=1, flags=re.MULTILINE)
-    txt = re.sub(r'^[ \t]*import\s+scope_fn[^\n]*\n', '', txt, count=1, flags=re.MULTILINE)
-
-    print(txt); exit(0)
 
 
 

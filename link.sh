@@ -11,4 +11,3 @@ ln -sf $srcdir/scope_fn.py .
 ln -sf $srcdir/dbg.py .
 
 ls -l scope_fn.py dbg.py
-
