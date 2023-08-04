@@ -13,11 +13,14 @@ import threading
 import enum
 
 GRAY, RED, GREEN, YELLOW, RESET = '\33[30m', '\33[31m', '\33[32m', '\33[33m', '\33[0m' # logging colors
-MAX_FUNC_LOGGING = 20
+# GRAY, RED, GREEN, YELLOW, RESET = '', '', '', '', '' # no clr
+
+MAX_FUNC_LOGGING = 999999
 
 
 @enum.unique
 class Suppress(enum.Enum):
+    SelfOnly = enum.auto()
     Following = enum.auto()
     SelfAndFollowing = enum.auto()
 
@@ -61,31 +64,25 @@ class Profile:
     def set_func_context(func_name:str, srcpath:str=None, *,
                          show_args:bool=False,
                          logging_cnt:int=MAX_FUNC_LOGGING,
-                         suppress:Suppress=None,
-                         block:bool=False):
+                         suppress:Suppress=None):
         assert Path(Profile._workdir).is_dir()
 
-        if srcpath is None and block:
-            # set global blacklist func
-            Profile._global_blackfunc.add(func_name)
+        if srcpath is None:
+            # set global func context
+            Profile._FuncCxt[func_name] = Profile.FuncContext(show_args=show_args, logging_cnt=logging_cnt, suppress=suppress)
             return
-
-        srcpath = Profile._trim_workingdir( os.path.abspath(srcpath) )
-        id = f"{func_name}@{srcpath}"
-
-        if block:
-            Profile._blacklist_funcs.add(id)
-            return
-
-        Profile._FuncCxt[id] = Profile.FuncContext(show_args=show_args, logging_cnt=logging_cnt, suppress=suppress)
+        else:
+            # func only in srcpath.
+            srcpath = Profile._trim_workingdir( os.path.abspath(srcpath) )
+            id = f"{func_name}@{srcpath}"
+            Profile._FuncCxt[id] = Profile.FuncContext(show_args=show_args, logging_cnt=logging_cnt, suppress=suppress)
 
 
     @staticmethod
     def set_func_context2(funcstr:str, *,
                           show_args:bool=False,
                           logging_cnt:int=MAX_FUNC_LOGGING,
-                          suppress:Suppress=None,
-                          block:bool=False):
+                          suppress:Suppress=None):
         '''
         funcstr: you can removed the line with python comment.
             # ex) get func_name and srcpath from ' IBasicBlock.forward() models/arcface.py:61, from '
@@ -98,12 +95,9 @@ class Profile:
                 func_name = func_name.strip()
                 srcpath = srcpath.strip()
                 Profile.set_func_context(func_name, srcpath,
-                                         show_args=show_args, logging_cnt=logging_cnt, suppress=suppress, block=block)
+                                         show_args=show_args, logging_cnt=logging_cnt, suppress=suppress)
 
     _whitelist_files:Set[str] = set()      # Look for these words in the file path.
-    _blacklist_funcs:Set[str] = set()      # Ignore func, etc. in the function name.
-    _global_blackfunc = set(['<listcomp>', '<genexpr>']) # + ['<module>']
-
 
     @staticmethod
     def add_sources(items:Union[str,list,set], all_subdir:bool=False):
@@ -191,16 +185,22 @@ class Profile:
     @staticmethod
     def args():
         frame = inspect.currentframe().f_back
-        if not any(x in frame.f_code.co_filename for x in Profile._whitelist_files):
+        if frame.f_code.co_filename not in Profile._whitelist_files:
+            return
+
+        tls = threading.current_thread().tlsdata
+        if tls.suppress is not None:
             return
 
         callee_func, callee_file, callee_line = Profile._getfi(frame)
-        id = f"{callee_func}@{callee_file}"
 
-        if id in Profile._blacklist_funcs:
+        funcxt = Profile._FuncCxt.get(callee_func, None) # without file scope.
+        if not funcxt:
+            fnid = f"{callee_func}@{callee_file}"
+            funcxt = Profile._FuncCxt.get(fnid, Profile.FuncContext())
+
+        if funcxt.suppress == Suppress.SelfOnly:
             return
-
-        funcxt = Profile._FuncCxt.get(id, Profile.FuncContext())
         if funcxt.logging_cnt < 0:
             return
         Profile._args(frame)
@@ -238,22 +238,26 @@ class Profile:
         # filtering non ROI
         if frame.f_code.co_filename not in Profile._whitelist_files:
             return
-        if frame.f_code.co_name in Profile._global_blackfunc:
-            return
 
         callee_func, callee_file, callee_line = Profile._getfi(frame)
         fnid = f"{callee_func}@{callee_file}"
 
-        if fnid in Profile._blacklist_funcs:
-            return
+        # if fnid in Profile._blacklist_funcs:
+        #     return
 
         tls = threading.current_thread().tlsdata
         if event == "call":
             if tls.suppress is not None:
                 return
 
-            funcxt = Profile._FuncCxt.get(fnid, Profile.FuncContext())
+            funcxt = Profile._FuncCxt.get(callee_func, None) # without file scope.
+            if not funcxt:
+                funcxt = Profile._FuncCxt.get(fnid, Profile.FuncContext())
+                Profile._FuncCxt[fnid] = funcxt
+
             if funcxt.suppress is not None:
+                if funcxt.suppress == Suppress.SelfOnly:
+                    return
                 tls.suppress_from = id(frame)
                 tls.suppress = funcxt.suppress
                 if funcxt.suppress == Suppress.SelfAndFollowing:
@@ -262,8 +266,6 @@ class Profile:
             funcxt.logging_cnt -= 1
             if funcxt.logging_cnt < 0:
                 return
-
-            Profile._FuncCxt[fnid] = funcxt
 
             caller_func, caller_file, caller_line = Profile._getfi(frame.f_back)
             Profile.log(f'{{ {callee_func}() { Profile._trim_workingdir(callee_file)}:{callee_line}, '
@@ -285,7 +287,12 @@ class Profile:
                 if suppress == Suppress.SelfAndFollowing:
                     return
 
-            funcxt = Profile._FuncCxt.get(fnid, Profile.FuncContext())
+            funcxt = Profile._FuncCxt.get(callee_func, None) # without file scope.
+            if not funcxt:
+                funcxt = Profile._FuncCxt.get(fnid, Profile.FuncContext())
+            if funcxt.suppress == Suppress.SelfOnly:
+                return
+
             if funcxt.logging_cnt >= 0:
                 # print('debug: exit', id(frame))
                 tls.indent = tls.indent[:-1]
