@@ -96,6 +96,7 @@ def text_lightcolor_table():
 def dump_packed(rawdata_path, printout=False):
     import numpy as np
     import os
+    npy_data = None
     if isinstance(rawdata_path, str):
         if rawdata_path.endswith('.npy'):
             assert os.path.exists(rawdata_path)
@@ -114,8 +115,8 @@ def dump_packed(rawdata_path, printout=False):
             return
     elif type(rawdata_path) == dict:
         npy_data = rawdata_path
-    elif ".npyio." in str(type(npy_data)):
-        npy_data = npy_data.item()
+    elif ".npyio." in str(type(rawdata_path)):
+        npy_data = rawdata_path.item()
 
     if printout:
         def print_item(k,v):
@@ -127,6 +128,8 @@ def dump_packed(rawdata_path, printout=False):
                 head = str(v)[:100]
                 head = head.replace('\n', '\n      ')
                 print( '     ', head )
+            elif len(v) > 10:
+                print(f"\33[33m{k}: len={len(v)}, {v[:10]}, {type(v)}\33[0m")
             else:
                 print(f"\33[33m{k}: {v}, {type(v)}\33[0m")
 
@@ -234,7 +237,7 @@ def open_file(filename):
         subprocess.call([opener, filename])
 
 #
-#
+# dict to attrs
 #
 class Struct(object):
     def __init__(self, **kwargs):
