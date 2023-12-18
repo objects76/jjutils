@@ -269,6 +269,18 @@ class Struct(object):
 def fmt(*args, sep=', '):
     return sep.join([ repr(a) for a in args])
 
+from .clrs import text_color
+green = text_color(text_color.green)
+
+def print_obj(obj)->str:
+    try:
+        print( '\n'.join([f"{k|green}: {v}" for k,v in vars(obj).items()]) )
+    except:
+        print( str(obj) )
+        pass
+
+
+
 if __name__ == '__main__':
     # test_cxtmgr()
     text_color_table()

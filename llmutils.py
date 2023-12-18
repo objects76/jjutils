@@ -128,7 +128,7 @@ def readable_tokens(lst, special_tokens=None) -> list[str]:
             count += 1
 
         else:
-            tokenclr = bg_red if token in special_tokens else bg_gray
+            tokenclr = bg_red if (token in special_tokens) else bg_gray
             if count >= 3:
                 strs.append(f"{token}*{count}@{i_new}"|tokenclr)
             else:
@@ -200,7 +200,11 @@ class LLMLog:
         # log_path =  Path(log_path)
         self.log_path = log_path.with_stem(log_path.stem + datetime.date.today().strftime('.%Y-%m-%d'))
         self.label_clr = text_color(text_color.yellow)
+        self.to_file_ = True
         pass
+
+    def to_file(self, enable):
+        self.to_file_ = enable
 
     def tokens(self, tokens, label=None):
         if label:
@@ -228,7 +232,7 @@ class LLMLog:
             text = buffer.getvalue()
 
         builtins.print(text, end='')
-        if self.log_path:
+        if self.to_file_ and self.log_path:
             with open(self.log_path, 'a') as fp:
                 builtins.print(text_color.decolorize(text), file=fp, end='')
 
@@ -242,6 +246,15 @@ class LLMLog:
             message = textwrap.indent(message+ '<eom>', prefix=' '*4)
             message = colorize_llm(message)
             self.print(message)
+
+    def openai_api_messages(self, messages, label=None):
+        if label:
+            self.print(f"[{label}]: "|self.label_clr)
+
+        prompt = '\n'.join([f"{m['role']|green}: {m['content']}" for m in messages])
+        prompt = textwrap.indent(prompt, prefix=' '*4)
+        prompt = colorize_llm(prompt)
+        self.print(prompt)
 
 
 def static_vars(**kwargs):
@@ -258,40 +271,46 @@ def static_vars(**kwargs):
 #
 #
 #
-class Message:
+class Messages(list):
     def __init__(self, messages = []) -> None:
-        self.items = messages
+        self.msgs = messages.copy()
         pass
 
     # listerize.
-    def __len__(self): return len(self.items)
+    def __len__(self): return len(self.msgs)
     def __iter__(self): self.curpos = 0; return self
 
     def __getitem__(self, item):
-        if self.index + item >= len(self.items): raise IndexError("Index out of range")
-        return self.items[self.index + item]
+        if self.index + item >= len(self.msgs): raise IndexError("Index out of range")
+        return self.msgs[self.index + item]
 
     def __next__(self):
-        if self.curpos >= len(self.items): raise StopIteration
-        value = self.items[self.curpos]
+        if self.curpos >= len(self.msgs): raise StopIteration
+        value = self.msgs[self.curpos]
         self.curpos += 1
         return value
 
-    def clear(self): self.items = []
-    def rewind(self, n): self.items = self.items[:-n] if n < len(self.items) else []
+    def tolist(self): return self.msgs
+    def clear(self):
+        self.msgs = []
+    def rewind(self, n):
+        self.msgs = self.msgs[:-n] if n < len(self.msgs) else []
+    def head(self, n):
+        self.msgs = self.msgs[0:n]
 
     def add(self, role, content):
         if len(content.strip()) > 0:
-            self.items.append( {"role":role, 'content': content.strip()} )
+            self.msgs.append( {"role":role, 'content': content.strip()} )
         return self
+
     def system(self, x):
         return self.add('system', x)
-
     def user(self, x):
         return self.add('user', x)
     def assistant(self, x):
         return self.add('assistant', x)
+
     def __repr__(self) -> str:
-        return f"Message #{len(self.items)}:\n" + '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self.items])
+        return f"Message #{len(self.msgs)}:\n" + '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self.msgs])
     # def __iter__(self):
     #     return iter(self.messages)
