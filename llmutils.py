@@ -52,6 +52,30 @@ class text_color:
     @staticmethod
     def decolorize(text):
         return re.sub(r"\x1b\[[\d;]+m", "", text)
+bg_gray = text_color(0, text_color.gray)
+bg_red = text_color(0, text_color.red)
+green = text_color(text_color.green)
+blue = text_color(text_color.blue)
+yellow = text_color(text_color.yellow)
+
+#
+#
+#
+class out:
+    markers = []
+    def __ror__(self, txt):
+        try:
+            for k in txt.keys():
+                v = str(txt[k])
+                for m in out.markers:
+                    v = v.replace(m, m|yellow)
+                print(f"{k|green}= {v}")
+        except:
+            for m in out.markers:
+                txt = str(txt).replace(m, m|yellow)
+            print(txt)
+        print() # sep
+
 #
 #
 #
@@ -102,11 +126,7 @@ def free_gpumem():
 #
 #
 #
-bg_gray = text_color(0, text_color.gray)
-bg_red = text_color(0, text_color.red)
-green = text_color(text_color.green)
-blue = text_color(text_color.blue)
-yellow = text_color(text_color.yellow)
+
 
 _special_tokens = '<s> </s> <unk> <pad> '.split() + [0, 1, 2, 32000]
 def readable_tokens(lst, special_tokens=None) -> list[str]:
@@ -272,45 +292,35 @@ def static_vars(**kwargs):
 #
 #
 class Messages(list):
-    def __init__(self, messages = []) -> None:
-        self.msgs = messages.copy()
-        pass
+    def extend(self, other):
+        if isinstance(other, type(self)):
+            super().extend(other)
+        else:
+            super().extend(str(item) for item in other)
 
-    # listerize.
-    def __len__(self): return len(self.msgs)
-    def __iter__(self): self.curpos = 0; return self
+    def __getitem__(self, index):
+        result = super().__getitem__(index)
+        if isinstance(index, slice):
+            return self.__class__(result)
+        return result
 
-    def __getitem__(self, item):
-        if self.index + item >= len(self.msgs): raise IndexError("Index out of range")
-        return self.msgs[self.index + item]
+    def __repr__(self) -> str:
+        return f"Message #{len(self)}:\n" + '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self])
 
-    def __next__(self):
-        if self.curpos >= len(self.msgs): raise StopIteration
-        value = self.msgs[self.curpos]
-        self.curpos += 1
-        return value
-
-    def tolist(self): return self.msgs
-    def clear(self):
-        self.msgs = []
     def rewind(self, n):
-        self.msgs = self.msgs[:-n] if n < len(self.msgs) else []
-    def head(self, n):
-        self.msgs = self.msgs[0:n]
+        self[:] = self[:-n] if n < len(self) else []
 
+    def head(self, n):
+        self[:] = self[:n]
+
+    # message
     def add(self, role, content):
         if len(content.strip()) > 0:
-            self.msgs.append( {"role":role, 'content': content.strip()} )
+            self.append( {"role":role, 'content': content.strip()} )
         return self
-
     def system(self, x):
         return self.add('system', x)
     def user(self, x):
         return self.add('user', x)
     def assistant(self, x):
         return self.add('assistant', x)
-
-    def __repr__(self) -> str:
-        return f"Message #{len(self.msgs)}:\n" + '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self.msgs])
-    # def __iter__(self):
-    #     return iter(self.messages)
