@@ -324,3 +324,31 @@ class Messages(list):
         return self.add('user', x)
     def assistant(self, x):
         return self.add('assistant', x)
+
+
+#
+#
+#
+import openai
+@static_vars(client = openai.OpenAI()) # api_key=os.getenv('OPENAI_API_KEY')
+def chatgpt_conversation(messages, model_name = 'gpt-3.5-turbo-1106'):
+    # model_name = 'gpt-3.5-turbo-0613'
+    # model_name = 'gpt-3.5-turbo-1106'
+    # model_name = 'gpt-4-0613'
+    # model_name = 'gpt-4-1106-preview'
+
+    try:
+        response = chatgpt_conversation.client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            # temperature=0.0,
+            top_p=0.0,
+            max_tokens=256,
+            seed=42,
+        )
+
+        response_message = response.choices[0].message.content.strip()
+        return response_message
+
+    except openai.RateLimitError as ex:
+        raise RuntimeError(str(ex))
