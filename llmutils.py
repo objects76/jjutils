@@ -32,6 +32,47 @@ class Struct(object):
     def keys(self): return self.__dict__.keys()
     def __getitem__(self, key): return dict(self.__dict__)[key]
 
+#
+# gpu
+#
+
+import os, subprocess, re, gc
+def free_gpumem():
+    smi_process = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+    smi_output = smi_process.stdout
+    smi_processes_section = smi_output[smi_output.find('Processes:'):]
+
+    path_pattern = r'(\d+)\s+\w+\s+(\.+\w+(?:\/(?:[\w.-]+\/?)*)?)\s+([^\s]+)'
+    match = re.findall(path_pattern, smi_processes_section)
+    for m in match:
+        pid = int(m[0])
+        if pid == os.getpid():
+            print(f'Current process({pid=}) use', m[2])
+        else:
+            print('kill', m)
+            try:
+                subprocess.run(["kill", "-9", m[0]], check=True)
+            except subprocess.CalledProcessError:
+                pass
+    torch.cuda.empty_cache()  # Clear GPU cache
+    gc.collect()  # Run garbage collection
+
+def get_gpu_memory_usage():
+    import subprocess
+    try:
+        result = subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], capture_output=True, text=True)
+        used_memory_str = result.stdout.strip()
+        used_memory = int(used_memory_str)
+
+        return used_memory
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def free_vram():
+    torch.cuda.empty_cache()
+    gc.collect()
+
 
 #
 # console text colors
@@ -61,20 +102,39 @@ yellow = text_color(text_color.yellow)
 #
 #
 #
+import inspect
 class out:
+    def __init__(self, suppress=False):
+        self.suppress = suppress
+
     markers = []
     def __ror__(self, txt):
+
+        if self.suppress:
+            return
+
+        frame = inspect.currentframe()
+        caller_locals = frame.f_back.f_locals
+
+        # print( caller_locals.items() )
+
+        arg_name = [name for name, value in caller_locals.items() if value is txt]
+        label = arg_name[0] if arg_name else None
+        # print( arg_name )
+        # arg_names = [name for name, value in caller_locals.items() if value in argv]
+
         try:
             for k in txt.keys():
                 v = str(txt[k])
+                if label: print(f'{label}: '|blue, end='')
                 for m in out.markers:
                     v = v.replace(m, m|yellow)
                 print(f"{k|green}= {v}")
         except:
             for m in out.markers:
                 txt = str(txt).replace(m, m|yellow)
+            if label: print(f'{label}= '|blue, end='')
             print(txt)
-        print() # sep
 
 #
 #
@@ -102,32 +162,6 @@ colorize_llm.tokens = '<s> </s> [INST] [/INST] <<SYS>> <</SYS>> <FUNCTIONS> </FU
 #
 #
 #
-import os, subprocess, re, gc
-def free_gpumem():
-    smi_process = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-    smi_output = smi_process.stdout
-    smi_processes_section = smi_output[smi_output.find('Processes:'):]
-
-    path_pattern = r'(\d+)\s+\w+\s+(\.+\w+(?:\/(?:[\w.-]+\/?)*)?)\s+([^\s]+)'
-    match = re.findall(path_pattern, smi_processes_section)
-    for m in match:
-        pid = int(m[0])
-        if pid == os.getpid():
-            print(f'Current process({pid=}) use', m[2])
-        else:
-            print('kill', m)
-            try:
-                subprocess.run(["kill", "-9", m[0]], check=True)
-            except subprocess.CalledProcessError:
-                pass
-    torch.cuda.empty_cache()  # Clear GPU cache
-    gc.collect()  # Run garbage collection
-
-#
-#
-#
-
-
 _special_tokens = '<s> </s> <unk> <pad> '.split() + [0, 1, 2, 32000]
 def readable_tokens(lst, special_tokens=None) -> list[str]:
 
@@ -209,6 +243,18 @@ def readable_tokens_str(lst, special_tokens=None) -> str:
 #
 #
 #
+import random
+def rand_index(lst):
+    return random.randint(0, len(lst)-1)
+
+import pandas as pd
+def rand_item(lst):
+    idx = rand_index(lst)
+    if isinstance(lst, pd.DataFrame):
+        return lst.iloc[idx], idx
+
+    return lst[idx], idx
+
 import torch
 import textwrap
 import datetime
@@ -305,7 +351,7 @@ class Messages(list):
         return result
 
     def __repr__(self) -> str:
-        return f"Message #{len(self)}:\n" + '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self])
+        return '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self])
 
     def rewind(self, n):
         self[:] = self[:-n] if n < len(self) else []
@@ -315,15 +361,22 @@ class Messages(list):
 
     # message
     def add(self, role, content):
-        if len(content.strip()) > 0:
-            self.append( {"role":role, 'content': content.strip()} )
+        if len(content.strip()) == 0:
+            raise RuntimeError('No content...')
+        self.append( {"role":role, 'content': content.strip()} )
         return self
+
     def system(self, x):
         return self.add('system', x)
     def user(self, x):
         return self.add('user', x)
     def assistant(self, x):
         return self.add('assistant', x)
+
+    # helpr
+    def filter(self, cond:callable):
+        return [ msg for msg in self if cond(msg)]
+
 
 
 #
