@@ -29,66 +29,6 @@ def srcpos(abspath=False):
 
 
 
-# console color:
-#   https://stackoverflow.com/questions/287871/how-do-i-print-colored-text-to-the-terminal
-#logx = lambda *args: print(caller(), "\33[32m", *args, '\033[0m')
-
-def logx(*args, caller=False, **kwargs):
-    if caller:
-        print(_caller())
-
-    if 'label' in kwargs.keys():
-        print("\33[0;36;40m", kwargs['label']+':', '\33[0m')
-        del kwargs['label']
-
-    # if 'end' not in kwargs.keys():
-    #     kwargs['end'] = '\n'
-    if len(args)>0:
-        print("\33[32m", *args, '\33[0m', **kwargs)
-
-
-def text_color_table():
-    """
-    prints table of formatted text format options
-    """
-    for fg in range(30,38):
-        s1 = ''
-        format = ';'.join([str(fg)])
-        s1 += f'\33[{format}m  \\33[{format}m \33[0m'
-        print(s1)
-
-    # for style in range(8):
-    #     for fg in range(30,38):
-    #         s1 = ''
-    #         format = ';'.join([str(style), str(fg)])
-    #         s1 += f'\33[{format}m  \\33[{format}m \33[0m'
-    #         print(s1)
-    #         # for bg in range(40,48):
-    #         #     format = ';'.join([str(style), str(fg), str(bg)])
-    #         #     s1 += f'\33[{format}m  \\33[{format}m \33[0m'
-    #         # print(s1)
-    #     print('\n')
-
-
-def text_lightcolor_table():
-    """
-    prints table of formatted text format options
-    """
-    for fg in range(30+60,38+60):
-        s1 = ''
-        format = ';'.join([str(fg)])
-        s1 += f'\33[{format}m  \\33[{format}m \33[0m'
-        print(s1)
-
-    # for style in range(8):
-    #     for fg in range(30+60,38+60):
-    #         s1 = ''
-    #         for bg in range(40+60,48+60):
-    #             format = ';'.join([str(style), str(fg), str(bg)])
-    #             s1 += f'\33[{format}m  \\33[{format}m \33[0m'
-    #         print(s1)
-    #     print('\n')
-
 
 #
 #
@@ -142,87 +82,42 @@ def dump_packed(rawdata_path, printout=False):
 
     return npy_data
 
-
 #
 #
 #
-try:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import torch
+import inspect
+class out:
+    def __init__(self, suppress=False):
+        self.suppress = suppress
 
-    def show_image(img, title=''):
-        '''
-        input imgs can be single or multiple tensor(s), this function uses matplotlib to visualize.
-        Single input example:
-        show(x) gives the visualization of x, where x should be a torch.Tensor
-            if x is a 4D tensor (like image batch with the size of b(atch)*c(hannel)*h(eight)*w(eight), this function splits x in batch dimension, showing b subplots in total, where each subplot displays first 3 channels (3*h*w) at most.
-            if x is a 3D tensor, this function shows first 3 channels at most (in RGB format)
-            if x is a 2D tensor, it will be shown as grayscale map
+    markers = []
+    def __ror__(self, txt):
 
-        Multiple input example:
-        show(x,y,z) produces three windows, displaying x, y, z respectively, where x,y,z can be in any form described above.
-        '''
-        if not isinstance(img, torch.Tensor):
-            raise Exception("unsupported type:  "+str(type(img)))
+        if self.suppress:
+            return
 
-        # plt.figure(img_idx)
-        img = img.detach().cpu()
+        frame = inspect.currentframe()
+        caller_locals = frame.f_back.f_locals
 
-        if img.dim()==4: # 4D tensor
-            bz = img.shape[0]
-            c = img.shape[1]
-            if bz==1 and c==1:  # single grayscale image
-                img=img.squeeze()
-            elif bz==1 and c==3: # single RGB image
-                img=img.squeeze()
-                img=img.permute(1,2,0)
-            elif bz==1 and c > 3: # multiple feature maps
-                img = img[:,0:3,:,:]
-                img = img.permute(0, 2, 3, 1)[:]
-                print('warning: more than 3 channels! only channels 0,1,2 are preserved!')
-            elif bz > 1 and c == 1:  # multiple grayscale images
-                img=img.squeeze()
-            elif bz > 1 and c == 3:  # multiple RGB images
-                img = img.permute(0, 2, 3, 1)
-            elif bz > 1 and c > 3:  # multiple feature maps
-                img = img[:,0:3,:,:]
-                img = img.permute(0, 2, 3, 1)[:]
-                print('warning: more than 3 channels! only channels 0,1,2 are preserved!')
-            else:
-                raise Exception("unsupported type!  " + str(img.size()))
-        elif img.dim()==3: # 3D tensor
-            bz = 1
-            c = img.shape[0]
-            if c == 1:  # grayscale
-                img=img.squeeze()
-            elif c == 3:  # RGB
-                img = img.permute(1, 2, 0)
-            else:
-                raise Exception("unsupported type!  " + str(img.size()))
-        elif img.dim()==2:
-            pass
-        else:
-            raise Exception("unsupported type!  "+str(img.size()))
+        # print( caller_locals.items() )
 
-        if len(title)>0:
-            plt.title(title)
+        arg_name = [name for name, value in caller_locals.items() if value is txt]
+        label = arg_name[0] if arg_name else None
+        # print( arg_name )
+        # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
-        img = img.numpy()  # convert to numpy
-        img = img.squeeze()
-        if bz ==1:
-            plt.imshow(img, cmap='gray')
-            # plt.colorbar()
-            # plt.show()
-        else:
-            for idx in range(0,bz):
-                plt.subplot(int(bz**0.5),int(np.ceil(bz/int(bz**0.5))),int(idx+1))
-                plt.imshow(img[idx], cmap='gray')
-
-        plt.show()
-except:
-    pass
-
+        try:
+            for k in txt.keys():
+                v = str(txt[k])
+                if label: print(f'{label}: '|blue, end='')
+                for m in out.markers:
+                    v = v.replace(m, m|yellow)
+                print(f"{k|green}= {v}")
+        except:
+            for m in out.markers:
+                txt = str(txt).replace(m, m|yellow)
+            if label: print(f'{label}= '|blue, end='')
+            print(txt)
 
 #
 #
