@@ -2,6 +2,45 @@
 import inspect
 from .clrs import yellow, green, blue
 
+
+import logging
+import logging.handlers
+from pathlib import Path
+
+def get_logger(logfile, name=None):
+
+    logger = logging.getLogger( name if name else Path(logfile).stem)
+    formatter = logging.Formatter('%(asctime)s %(levelname)8s - %(message)s', "%m/%d %H:%M:%S")
+
+    streamHandler = logging.StreamHandler()
+    fileHandler = logging.FileHandler( Path(logfile).with_suffix('.log') )
+    streamHandler.setFormatter(formatter)
+    fileHandler.setFormatter(formatter)
+
+    try:
+        while logger.hasHandlers():
+            logger.removeHandler(logger.handlers[0])
+    except:pass
+
+    logger.addHandler(streamHandler)
+    logger.addHandler(fileHandler)
+
+    # logger.setLevel(level=logging.DEBUG)
+    return logger
+
+#
+#
+#
+def val_name(variable, local_vars = None):
+    if local_vars is None:
+        frame = inspect.currentframe()
+        local_vars = frame.f_back.f_locals
+    for name, value in local_vars.items():
+        if value is variable:
+            return name
+    return None
+
+
 class out:
     def __init__(self, suppress=False):
         self.suppress = suppress
