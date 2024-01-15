@@ -255,7 +255,6 @@ def rand_item(lst):
 
     return lst[idx], idx
 
-import torch
 import textwrap
 import datetime
 from pathlib import Path
@@ -264,7 +263,7 @@ import builtins
 class LLMLog:
     def __init__(self, *, log_path:Path=None) -> None:
         # log_path =  Path(log_path)
-        self.log_path = log_path.with_stem(log_path.stem + datetime.date.today().strftime('.%Y-%m-%d'))
+        self.log_path = log_path.with_stem(log_path.stem + datetime.date.today().strftime('_%Y-%m-%d'))
         self.label_clr = text_color(text_color.yellow)
         self.to_file_ = True
         pass
@@ -273,6 +272,7 @@ class LLMLog:
         self.to_file_ = enable
 
     def tokens(self, tokens, label=None):
+        import torch
         if label:
             label = f"[{label}]: "
             self.print(label|self.label_clr, end='')
@@ -291,13 +291,18 @@ class LLMLog:
         # return tokens
 
     def print(self, *argv, **kwargv):
+        fileonly = 'fileonly' in kwargv
+        if fileonly:
+            fileonly = kwargv['fileonly']
+            del kwargv['fileonly']
+
         # format
         with io.StringIO() as buffer:
             kwargv['file']=buffer
             builtins.print(*argv, **kwargv)
             text = buffer.getvalue()
 
-        builtins.print(text, end='')
+        if not fileonly: builtins.print(text, end='')
         if self.to_file_ and self.log_path:
             with open(self.log_path, 'a') as fp:
                 builtins.print(text_color.decolorize(text), file=fp, end='')
@@ -360,6 +365,22 @@ class Messages(list):
         self[:] = self[:n]
 
     # message
+    def remove_role(self, role):
+        i = 0
+        while i < len(self):
+            if self[i]['role'] == role:
+                self.pop(i)
+            else:
+                i += 1
+    # message
+    def keep_role_only(self, role):
+        i = 0
+        while i < len(self):
+            if self[i]['role'] != role:
+                self.pop(i)
+            else:
+                i += 1
+
     def add(self, role, content):
         if len(content.strip()) == 0:
             raise RuntimeError('No content...')
@@ -377,12 +398,13 @@ class Messages(list):
     def filter(self, cond:callable):
         return [ msg for msg in self if cond(msg)]
 
+    def get_last_message(self):
+        return self[-1]['content']
 
-
 #
 #
 #
-import openai
+import openai # pip install openai
 @static_vars(client = openai.OpenAI()) # api_key=os.getenv('OPENAI_API_KEY')
 def chatgpt_conversation(messages, model_name = 'gpt-3.5-turbo-1106'):
     # model_name = 'gpt-3.5-turbo-0613'
