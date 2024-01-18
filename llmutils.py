@@ -382,9 +382,9 @@ class Messages(list):
                 i += 1
 
     def add(self, role, content):
-        if len(content.strip()) == 0:
+        if len(content) == 0:
             raise RuntimeError('No content...')
-        self.append( {"role":role, 'content': content.strip()} )
+        self.append( {"role":role, 'content': content} )
         return self
 
     def system(self, x):
