@@ -344,10 +344,9 @@ def static_vars(**kwargs):
 #
 class Messages(list):
     def extend(self, other):
-        if isinstance(other, type(self)):
-            super().extend(other)
-        else:
-            super().extend(str(item) for item in other)
+        for item in other:
+            self.add(item['role'], item['content'])
+        return self
 
     def __getitem__(self, index):
         result = super().__getitem__(index)
@@ -356,7 +355,10 @@ class Messages(list):
         return result
 
     def __repr__(self) -> str:
-        return '\n'.join([f'''{i['role']|yellow}: {i['content']}''' for i in self])
+        return '\n'.join([f'''{item['role']|yellow}: {item['content']}''' for item in self])
+
+    def export(self) -> str:
+        return '\n\n'.join([f'''__{item['role']}: {item['content']}''' for item in self])
 
     def rewind(self, n):
         self[:] = self[:-n] if n < len(self) else []
@@ -401,6 +403,8 @@ class Messages(list):
     def get_last_message(self):
         return self[-1]['content']
 
+    def count(self, role):
+        return sum([ 1 for msg in self if msg['role'] == role])
 #
 #
 #
