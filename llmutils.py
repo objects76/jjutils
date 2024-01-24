@@ -35,9 +35,9 @@ class Struct(object):
 #
 # gpu
 #
-
 import os, subprocess, re, gc
 def free_gpumem():
+    import torch
     smi_process = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
     smi_output = smi_process.stdout
     smi_processes_section = smi_output[smi_output.find('Processes:'):]
@@ -70,8 +70,11 @@ def get_gpu_memory_usage():
         return None
 
 def free_vram():
+    import torch
     torch.cuda.empty_cache()
     gc.collect()
+
+
 
 
 #
@@ -164,7 +167,7 @@ colorize_llm.tokens = '<s> </s> [INST] [/INST] <<SYS>> <</SYS>> <FUNCTIONS> </FU
 #
 _special_tokens = '<s> </s> <unk> <pad> '.split() + [0, 1, 2, 32000]
 def readable_tokens(lst, special_tokens=None) -> list[str]:
-
+    import torch
     if isinstance(lst, torch.Tensor):
         lst = lst.tolist()
 

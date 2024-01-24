@@ -100,6 +100,26 @@ class NotebookFinder(object):
 
 
 #
+# get all tags
+#
+def get_tags(nbfile:Path):
+    import nbformat, io
+    from datetime import datetime
+
+    with io.open(nbfile, 'r', encoding='utf-8') as fp:
+        nb = nbformat.read(fp, as_version=4)
+
+    tags = [f"{nbfile}, {datetime.now():%Y-%m-%d, %H:%M}"]
+    for cell in nb.cells:
+        if cell.cell_type == 'code':
+            if len(cell.source.strip()) == 0: continue
+
+            if ('tags' in cell.metadata):
+                tags.append(','.join(cell.metadata.tags))
+
+    return '\n'.join([i for i in tags if i.strip()]) + '\n\n'
+
+#
 #
 #
 def export_notebook(nbfile:Path, the_tag:str=typing.Union['not-export','export']):
