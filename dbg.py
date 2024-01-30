@@ -175,6 +175,9 @@ def print_obj(obj)->str:
         pass
 
 
+class StopExecution(Exception):
+    def _render_traceback_(self): print('stop execution')
+
 
 if __name__ == '__main__':
     # test_cxtmgr()
