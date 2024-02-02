@@ -181,7 +181,7 @@ class StopExecution(Exception):
 
 if __name__ == '__main__':
     # test_cxtmgr()
-    text_color_table()
+    # text_color_table()
     print( fmt(1, 'abc', list(), f'100+100={100+100}') )
     print( fmt(2, 'abc', list(), f'100+100={100+100}', sep='/') )
     print( fmt(3, 'abc', list(), f'100+100={100+100}', sep='/') )
