@@ -27,15 +27,6 @@ def static_vars(**kwargs):
 #         return func
 #     return decorate
 
-def srcpos(abspath=False):
-    fi = inspect.getouterframes(inspect.currentframe())[1]
-
-    filename = os.path.abspath(fi.filename) if abspath else os.path.basename(fi.filename)
-    return f'\33[36mat {fi.function}() ./{filename}:{fi.lineno}\33[0m'
-
-
-
-
 #
 #
 #
@@ -184,6 +175,9 @@ class StopExecution(Exception):
     def _render_traceback_(self): print('stop execution')
 
 
+class _srcpos:
+    def __get__(self, inst, owner):
+        return f"{inspect.stack()[1].function} :{inspect.stack()[1].lineno}"
 
 
 class Debug:
@@ -196,6 +190,10 @@ class Debug:
             raise self.StopCell()
 
     stop_cell = raise_StopCell()
+
+    srcpos = _srcpos()
+
+
 
 
 if __name__ == '__main__':
