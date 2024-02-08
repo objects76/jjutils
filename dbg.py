@@ -3,9 +3,15 @@
 
 import os
 import inspect
-import inspect
 import glob
 
+from .clrs import text_color
+blue = text_color(text_color.blue)
+yellow = text_color(text_color.yellow)
+green = text_color(text_color.green)
+
+# import sys, os
+# if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
 def static_vars(**kwargs):
     def decorate(func):
@@ -85,7 +91,8 @@ def dump_packed(rawdata_path, printout=False):
 #
 #
 #
-import inspect
+
+
 class out:
     def __init__(self, suppress=False):
         self.suppress = suppress
@@ -164,8 +171,6 @@ class Struct(object):
 def fmt(*args, sep=', '):
     return sep.join([ repr(a) for a in args])
 
-from .clrs import text_color
-green = text_color(text_color.green)
 
 def print_obj(obj)->str:
     try:
@@ -179,10 +184,28 @@ class StopExecution(Exception):
     def _render_traceback_(self): print('stop execution')
 
 
+
+
+class Debug:
+    class raise_StopCell:
+        class StopCell(BaseException):
+            def _render_traceback_(self):
+                print('\033[30;100m', '[ STOP CELL EXECUTION ]', '\033[0m')
+
+        def __get__(self, instance, owner):
+            raise self.StopCell()
+
+    stop_cell = raise_StopCell()
+
+
 if __name__ == '__main__':
+
     # test_cxtmgr()
     # text_color_table()
+
     print( fmt(1, 'abc', list(), f'100+100={100+100}') )
     print( fmt(2, 'abc', list(), f'100+100={100+100}', sep='/') )
+
+
     print( fmt(3, 'abc', list(), f'100+100={100+100}', sep='/') )
     print( fmt() )
