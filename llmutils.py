@@ -107,8 +107,9 @@ yellow = text_color(text_color.yellow)
 #
 import inspect
 class out:
-    def __init__(self, suppress=False):
+    def __init__(self, nl_after = False, suppress=False):
         self.suppress = suppress
+        self.nl_after = nl_after
 
     markers = []
     def __ror__(self, txt):
@@ -133,11 +134,16 @@ class out:
                 for m in out.markers:
                     v = v.replace(m, m|yellow)
                 print(f"{k|green}= {v}")
+
+            if self.nl_after:
+                print()
         except:
             for m in out.markers:
                 txt = str(txt).replace(m, m|yellow)
             if label: print(f'{label}= '|blue, end='')
             print(txt)
+            if self.nl_after:
+                print()
 
 #
 #
@@ -346,6 +352,9 @@ def static_vars(**kwargs):
 #
 #
 class Messages(list):
+    def __init__(self, iterable = []):
+        super().__init__(item for item in iterable)
+
     def extend(self, other):
         for item in other:
             self.add(item['role'], item['content'])
@@ -359,12 +368,24 @@ class Messages(list):
 
     def __repr__(self) -> str:
         return '\n'.join([f'''{item['role']|yellow}: {item['content']}''' for item in self])
+    def rewind(self, n):
+        self[:] = self[:-n] if n < len(self) else []
+
+    # def append(self, v0):
+    #     v = vars(v0)
+    #     if 'function_call' in v and v['content']:
+    #         content = v['function_call']
+    #     elif 'tool_calls' in v and v['tool_calls']:
+    #         content = v['tool_calls']
+    #     elif 'content' in v and v['content']:
+    #         content = v['content']
+    #     else:
+    #         content = str(v)
+    #     self.add(v['role'], content)
 
     def export(self) -> str:
         return '\n\n'.join([f'''__{item['role']}: {item['content']}''' for item in self])
 
-    def rewind(self, n):
-        self[:] = self[:-n] if n < len(self) else []
 
     def head(self, n):
         self[:] = self[:n]
@@ -389,7 +410,7 @@ class Messages(list):
     def add(self, role, content):
         if len(content) == 0:
             raise RuntimeError('No content...')
-        self.append( {"role":role, 'content': content} )
+        super().append( {"role":role, 'content': content} )
         return self
 
     def system(self, x):
