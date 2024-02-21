@@ -89,6 +89,10 @@ class out:
         self.suppress = suppress
 
     markers = []
+    @staticmethod
+    def set_markers( markers_:list[str] ):
+        out.markers = sorted(markers_, key=len, reverse=True)
+
     def __ror__(self, txt):
 
         if self.suppress:
@@ -108,14 +112,27 @@ class out:
             for k in txt.keys():
                 v = str(txt[k])
                 if label: print(f'{label}: '|blue, end='')
+
                 for m in out.markers:
-                    v = v.replace(m, m|yellow)
+                    idx = len(v)
+                    while True:
+                        idx = v.rfind(m, 0, idx)
+                        if idx < 0: break
+                        if v[idx-1] != 'm':
+                            v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
                 print(f"{k|green}= {v}")
         except:
+            v = str(txt)
             for m in out.markers:
-                txt = str(txt).replace(m, m|yellow)
+                idx = len(v)
+                while True:
+                    idx = v.rfind(m, 0, idx)
+                    if idx < 0: break
+                    if v[idx-1] != 'm':
+                        v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
+
             if label: print(f'{label}= '|blue, end='')
-            print(txt)
+            print(v)
 
 #
 #

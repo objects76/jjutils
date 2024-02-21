@@ -349,6 +349,13 @@ def static_vars(**kwargs):
 #
 import json
 class Messages(list):
+
+    def __init__(self, iterable=None):
+        if iterable:
+            super().__init__(item for item in iterable)
+        else:
+            super().__init__()
+
     def extend(self, other):
         for item in other:
             self.add(item["role"], item["content"])
@@ -399,7 +406,14 @@ class Messages(list):
     def add(self, role, content):
         if len(content) == 0:
             raise RuntimeError("No content...")
-        self.append( {"role":role, "content": content} )
+        if isinstance(content, str):
+            self.append( {"role":role, "content": content} )
+        elif isinstance(content, dict):
+            content['role'] = role
+            self.append( content )
+        else:
+            raise ValueError('invalid content:' + str(content))
+
         return self
 
     def system(self, x):
@@ -408,6 +422,13 @@ class Messages(list):
         return self.add("user", x)
     def assistant(self, x):
         return self.add("assistant", x)
+    def tool(self, x):
+        return self.add("tool", x)
+
+    def cont(self, x):
+        self[-1]["content"] += ' ' + str(x)
+        return self
+
 
     # helpr
     def filter(self, cond:callable):
