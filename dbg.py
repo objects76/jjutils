@@ -113,7 +113,7 @@ class out:
                 v = str(txt[k])
                 if label: print(f'{label}: '|blue, end='')
 
-                for m in out.markers:
+                for m in self.markers:
                     idx = len(v)
                     while True:
                         idx = v.rfind(m, 0, idx)
@@ -123,7 +123,7 @@ class out:
                 print(f"{k|green}= {v}")
         except:
             v = str(txt)
-            for m in out.markers:
+            for m in self.markers:
                 idx = len(v)
                 while True:
                     idx = v.rfind(m, 0, idx)
