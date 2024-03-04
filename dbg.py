@@ -85,8 +85,9 @@ def dump_packed(rawdata_path, printout=False):
 
 
 class out:
-    def __init__(self, suppress=False):
+    def __init__(self, nl_before = False, suppress=False):
         self.suppress = suppress
+        self.nl_before = nl_before
 
     markers = []
     @staticmethod
@@ -108,6 +109,7 @@ class out:
         # print( arg_name )
         # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
+        if self.nl_before: print()
         try:
             for k in txt.keys():
                 v = str(txt[k])
@@ -133,6 +135,7 @@ class out:
 
             if label: print(f'{label}= '|blue, end='')
             print(v)
+cout = out
 
 #
 #
