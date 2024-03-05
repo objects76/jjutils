@@ -410,7 +410,12 @@ class Messages(list):
     def add(self, role, content):
         if len(content) == 0:
             raise RuntimeError('No content...')
-        super().append( {"role":role, 'content': content} )
+        if isinstance(content, str):
+            super().append( {"role":role, 'content': content} )
+        elif isinstance(content, dict):
+            content.update({"role":role})
+            super().append(content)
+
         return self
 
     def system(self, x):
