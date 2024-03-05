@@ -257,12 +257,14 @@ def rand_index(lst):
     return random.randint(0, len(lst)-1)
 
 import pandas as pd
-def rand_item(lst):
+def rand_item(lst, get_index = True):
     idx = rand_index(lst)
     if isinstance(lst, pd.DataFrame):
         return lst.iloc[idx], idx
 
-    return lst[idx], idx
+    if get_index:
+        return lst[idx], idx
+    return lst[idx]
 
 import textwrap
 import datetime
@@ -351,13 +353,18 @@ def static_vars(**kwargs):
 #
 #
 #
+import json
 class Messages(list):
-    def __init__(self, iterable = []):
-        super().__init__(item for item in iterable)
+
+    def __init__(self, iterable=None):
+        if iterable:
+            super().__init__(item for item in iterable)
+        else:
+            super().__init__()
 
     def extend(self, other):
         for item in other:
-            self.add(item['role'], item['content'])
+            self.add(item["role"], item["content"])
         return self
 
     def __getitem__(self, index):
@@ -368,23 +375,16 @@ class Messages(list):
 
     def __repr__(self) -> str:
         return '\n'.join([f'''{item['role']|yellow}: {item['content']}''' for item in self])
-    def rewind(self, n):
-        self[:] = self[:-n] if n < len(self) else []
-
-    # def append(self, v0):
-    #     v = vars(v0)
-    #     if 'function_call' in v and v['content']:
-    #         content = v['function_call']
-    #     elif 'tool_calls' in v and v['tool_calls']:
-    #         content = v['tool_calls']
-    #     elif 'content' in v and v['content']:
-    #         content = v['content']
-    #     else:
-    #         content = str(v)
-    #     self.add(v['role'], content)
 
     def export(self) -> str:
-        return '\n\n'.join([f'''__{item['role']}: {item['content']}''' for item in self])
+        lines = []
+        for item in self:
+            if isinstance(item["content"], dict):
+                lines.append(f"""__{item["role"]}: {json.dumps(item["content"])}""")
+            else:
+                lines.append(f"""__{item["role"]}: {item["content"]}""")
+
+        return "\n\n".join(lines)
 
 
     def head(self, n):
@@ -394,7 +394,7 @@ class Messages(list):
     def remove_role(self, role):
         i = 0
         while i < len(self):
-            if self[i]['role'] == role:
+            if self[i]["role"] == role:
                 self.pop(i)
             else:
                 i += 1
@@ -402,7 +402,7 @@ class Messages(list):
     def keep_role_only(self, role):
         i = 0
         while i < len(self):
-            if self[i]['role'] != role:
+            if self[i]["role"] != role:
                 self.pop(i)
             else:
                 i += 1
@@ -410,40 +410,42 @@ class Messages(list):
     def add(self, role, content):
         if len(content) == 0:
             raise RuntimeError('No content...')
-        if isinstance(content, str):
-            super().append( {"role":role, 'content': content} )
-        elif isinstance(content, dict):
-            content.update({"role":role})
-            super().append(content)
-
+        self.append( {"role":role, 'content': content} )
         return self
 
     def system(self, x):
-        return self.add('system', x)
+        return self.add("system", x)
     def user(self, x):
-        return self.add('user', x)
+        return self.add("user", x)
     def assistant(self, x):
-        return self.add('assistant', x)
+        return self.add("assistant", x)
+    def tool(self, x):
+        return self.add("tool", x)
+
+    def cont(self, x):
+        self[-1]["content"] += ' ' + str(x)
+        return self
+
 
     # helpr
     def filter(self, cond:callable):
         return [ msg for msg in self if cond(msg)]
 
     def get_last_message(self):
-        return self[-1]['content']
+        return self[-1]["content"]
 
     def count(self, role):
-        return sum([ 1 for msg in self if msg['role'] == role])
+        return sum([ 1 for msg in self if msg["role"] == role])
 #
 #
 #
 import openai # pip install openai
-@static_vars(client = openai.OpenAI()) # api_key=os.getenv('OPENAI_API_KEY')
-def chatgpt_conversation(messages, model_name = 'gpt-3.5-turbo-1106'):
-    # model_name = 'gpt-3.5-turbo-0613'
-    # model_name = 'gpt-3.5-turbo-1106'
-    # model_name = 'gpt-4-0613'
-    # model_name = 'gpt-4-1106-preview'
+@static_vars(client = openai.OpenAI()) # api_key=os.getenv("OPENAI_API_KEY")
+def chatgpt_conversation(messages, model_name = "gpt-3.5-turbo-1106"):
+    # model_name = "gpt-3.5-turbo-0613"
+    # model_name = "gpt-3.5-turbo-1106"
+    # model_name = "gpt-4-0613"
+    # model_name = "gpt-4-1106-preview"
 
     try:
         response = chatgpt_conversation.client.chat.completions.create(

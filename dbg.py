@@ -3,9 +3,15 @@
 
 import os
 import inspect
-import inspect
 import glob
 
+from .clrs import text_color
+blue = text_color(text_color.blue)
+yellow = text_color(text_color.yellow)
+green = text_color(text_color.green)
+
+# import sys, os
+# if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
 def static_vars(**kwargs):
     def decorate(func):
@@ -20,15 +26,6 @@ def static_vars(**kwargs):
 #         setattr(func, varname, value)
 #         return func
 #     return decorate
-
-def srcpos(abspath=False):
-    fi = inspect.getouterframes(inspect.currentframe())[1]
-
-    filename = os.path.abspath(fi.filename) if abspath else os.path.basename(fi.filename)
-    return f'\33[36mat {fi.function}() ./{filename}:{fi.lineno}\33[0m'
-
-
-
 
 #
 #
@@ -85,12 +82,18 @@ def dump_packed(rawdata_path, printout=False):
 #
 #
 #
-import inspect
+
+
 class out:
-    def __init__(self, suppress=False):
+    def __init__(self, nl_before = False, suppress=False):
         self.suppress = suppress
+        self.nl_before = nl_before
 
     markers = []
+    @staticmethod
+    def set_markers( markers_:list[str] ):
+        out.markers = sorted(markers_, key=len, reverse=True)
+
     def __ror__(self, txt):
 
         if self.suppress:
@@ -106,18 +109,33 @@ class out:
         # print( arg_name )
         # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
+        if self.nl_before: print()
         try:
             for k in txt.keys():
                 v = str(txt[k])
                 if label: print(f'{label}: '|blue, end='')
-                for m in out.markers:
-                    v = v.replace(m, m|yellow)
+
+                for m in self.markers:
+                    idx = len(v)
+                    while True:
+                        idx = v.rfind(m, 0, idx)
+                        if idx < 0: break
+                        if v[idx-1] != 'm':
+                            v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
                 print(f"{k|green}= {v}")
         except:
-            for m in out.markers:
-                txt = str(txt).replace(m, m|yellow)
+            v = str(txt)
+            for m in self.markers:
+                idx = len(v)
+                while True:
+                    idx = v.rfind(m, 0, idx)
+                    if idx < 0: break
+                    if v[idx-1] != 'm':
+                        v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
+
             if label: print(f'{label}= '|blue, end='')
-            print(txt)
+            print(v)
+cout = out
 
 #
 #
@@ -164,8 +182,6 @@ class Struct(object):
 def fmt(*args, sep=', '):
     return sep.join([ repr(a) for a in args])
 
-from .clrs import text_color
-green = text_color(text_color.green)
 
 def print_obj(obj)->str:
     try:
@@ -175,11 +191,39 @@ def print_obj(obj)->str:
         pass
 
 
+class StopExecution(Exception):
+    def _render_traceback_(self): print('stop execution')
+
+
+class _srcpos:
+    def __get__(self, inst, owner):
+        return f"{inspect.stack()[1].function} :{inspect.stack()[1].lineno}"
+
+
+class Debug:
+    class raise_StopCell:
+        class StopCell(BaseException):
+            def _render_traceback_(self):
+                print('\033[30;100m', '[ STOP CELL EXECUTION ]', '\033[0m')
+
+        def __get__(self, instance, owner):
+            raise self.StopCell()
+
+    stop_cell = raise_StopCell()
+
+    srcpos = _srcpos()
+
+
+
 
 if __name__ == '__main__':
+
     # test_cxtmgr()
-    text_color_table()
+    # text_color_table()
+
     print( fmt(1, 'abc', list(), f'100+100={100+100}') )
     print( fmt(2, 'abc', list(), f'100+100={100+100}', sep='/') )
+
+
     print( fmt(3, 'abc', list(), f'100+100={100+100}', sep='/') )
     print( fmt() )

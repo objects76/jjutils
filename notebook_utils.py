@@ -122,44 +122,51 @@ def get_tags(nbfile:Path):
 #
 #
 #
-def export_notebook(nbfile:Path, the_tag:str=typing.Union['not-export','export']):
+import nbformat, io, re
+
+def export_notebook(globals_ = None, *, nbfile:str = None):
     ''' pip install nbformat '''
-    import nbformat, io
+    if nbfile is None:
+        nbfile:str = globals_['__vsc_ipynb_file__']
 
     with io.open(nbfile, 'r', encoding='utf-8') as f:
         nb = nbformat.read(f, as_version=4)
 
-    is_export_tag = (the_tag == 'export')
-
     markdowns = []
-    with open(nbfile.replace('.ipynb', '.py'), 'w') as fp:
+    exported_path = nbfile.replace('.ipynb', '_exported.py')
+    with open(exported_path, 'w') as fp:
         fp.write(f"# from {nbfile}\n# {datetime.now()}\n\n")
         for cell in nb.cells:
             if cell.cell_type == 'code':
                 if len(cell.source.strip()) == 0:
                     continue
 
-                taghit = ('tags' in cell.metadata) and (the_tag in cell.metadata.tags)
-                # print(f'code: {taghit=}', cell.source[:10])
+                is_x = ('tags' in cell.metadata) and ('x' in cell.metadata.tags)
 
-                if is_export_tag == taghit and 'export_notebook' not in cell.source:
+                if not is_x and 'export_notebook' not in cell.source:
+                    source = cell.source
+
                     # export markdowns upper code cell.
                     for markdown in markdowns:
                         fp.write('# '+ markdown.replace('\n', '\n# ') + '\n')
 
                     # remove notebook %reload_ext autoreload like statements
-                    source = re.sub(r'^%\w+[^\n]+\n', '', cell.source, flags=re.MULTILINE)
+                    source = re.sub(r'^%\w+[^\n]+\n', '', source, flags=re.MULTILINE)
 
-                    # remove ! statement
-                    source = re.sub(r'^(![^\n]+\n)', r'#\1', cell.source, flags=re.MULTILINE)
+                    # comment out ! statement
+                    source = re.sub(r'^(![^\n]+\n)', r'#\1', source, flags=re.MULTILINE)
 
-                    fp.write('\n# %%  ------------------------------------\n')
+                    # remove __nbook__
+                    # source = re.sub(r"if __name__ == '__nbook__':\s+(\n[ \t]+[^\n]+|\n)+", r'', cell.source, flags=re.MULTILINE)
+
+                    # fp.write('\n# %%  ------------------------------------\n')
                     fp.write(source)
                     fp.write('\n\n')
                 markdowns = []
             else:
                 markdowns.append(cell.source)
-        print( nbfile.replace('.ipynb', '.py') , 'done!')
+
+        print( exported_path , 'done!')
 
 # import notebook_utils
-# notebook_utils.export_notebook(globals()['__vsc_ipynb_file__'], the_tag='not-export') # 'export' or 'not-export'
+# notebook_utils.export_notebook(globals())
