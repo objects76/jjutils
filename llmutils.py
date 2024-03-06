@@ -356,16 +356,28 @@ def static_vars(**kwargs):
 import json
 class Messages(list):
 
+    def system(self, content:str): return self.append(dict(role="system", content=content))
+    def user(self, content:str): return self.append(dict(role="user", content=content))
+    def assistant(self, content:str): return self.append(dict(role="assistant", content=content))
+
+    def append(self, obj):
+        assert isinstance(obj, dict), f"Invalid type: {type(obj)}, {obj}"
+        assert obj.get('role') != None, f"No role in {obj}"
+        super(Messages, self).append( obj )
+        return self
+
+    def extend(self, other):
+        for item in other:
+            self.append(item)
+        return self
+
+    #
+    #
     def __init__(self, iterable=None):
         if iterable:
             super().__init__(item for item in iterable)
         else:
             super().__init__()
-
-    def extend(self, other):
-        for item in other:
-            self.add(item["role"], item["content"])
-        return self
 
     def __getitem__(self, index):
         result = super().__getitem__(index)
@@ -374,7 +386,7 @@ class Messages(list):
         return result
 
     def __repr__(self) -> str:
-        return '\n'.join([f'''{item['role']|yellow}: {item['content']}''' for item in self])
+        return "\n".join([f"""{item["role"]|yellow}: {item["content"]}""" for item in self])
 
     def export(self) -> str:
         lines = []
@@ -385,46 +397,6 @@ class Messages(list):
                 lines.append(f"""__{item["role"]}: {item["content"]}""")
 
         return "\n\n".join(lines)
-
-
-    def head(self, n):
-        self[:] = self[:n]
-
-    # message
-    def remove_role(self, role):
-        i = 0
-        while i < len(self):
-            if self[i]["role"] == role:
-                self.pop(i)
-            else:
-                i += 1
-    # message
-    def keep_role_only(self, role):
-        i = 0
-        while i < len(self):
-            if self[i]["role"] != role:
-                self.pop(i)
-            else:
-                i += 1
-
-    def add(self, role, content):
-        if len(content) == 0:
-            raise RuntimeError('No content...')
-        self.append( {"role":role, 'content': content} )
-        return self
-
-    def system(self, x):
-        return self.add("system", x)
-    def user(self, x):
-        return self.add("user", x)
-    def assistant(self, x):
-        return self.add("assistant", x)
-    def tool(self, x):
-        return self.add("tool", x)
-
-    def cont(self, x):
-        self[-1]["content"] += ' ' + str(x)
-        return self
 
 
     # helpr
