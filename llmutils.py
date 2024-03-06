@@ -107,9 +107,9 @@ yellow = text_color(text_color.yellow)
 #
 import inspect
 class out:
-    def __init__(self, nl_after = False, suppress=False):
+    def __init__(self, nl_before = False, suppress=False):
         self.suppress = suppress
-        self.nl_after = nl_after
+        self.nl_before = nl_before
 
     markers = []
     def __ror__(self, txt):
@@ -127,6 +127,7 @@ class out:
         # print( arg_name )
         # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
+        if self.nl_before: print()
         try:
             for k in txt.keys():
                 v = str(txt[k])
@@ -135,15 +136,11 @@ class out:
                     v = v.replace(m, m|yellow)
                 print(f"{k|green}= {v}")
 
-            if self.nl_after:
-                print()
         except:
             for m in out.markers:
                 txt = str(txt).replace(m, m|yellow)
             if label: print(f'{label}= '|blue, end='')
             print(txt)
-            if self.nl_after:
-                print()
 
 #
 #
