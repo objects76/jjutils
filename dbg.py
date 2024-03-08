@@ -9,6 +9,7 @@ from .clrs import text_color
 blue = text_color(text_color.blue)
 yellow = text_color(text_color.yellow)
 green = text_color(text_color.green)
+red = text_color(text_color.red)
 
 # import sys, os
 # if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))

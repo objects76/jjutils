@@ -107,7 +107,7 @@ yellow = text_color(text_color.yellow)
 #
 import inspect
 class out:
-    def __init__(self, nl_before = False, suppress=False):
+    def __init__(self, nl_before = True, suppress=False):
         self.suppress = suppress
         self.nl_before = nl_before
 
