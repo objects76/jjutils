@@ -124,6 +124,7 @@ def get_tags(nbfile:Path):
 #
 import nbformat, io, re
 
+# export_notebook( globals() )
 def export_notebook(globals_ = None, *, nbfile:str = None):
     ''' pip install nbformat '''
     if nbfile is None:
@@ -133,7 +134,7 @@ def export_notebook(globals_ = None, *, nbfile:str = None):
         nb = nbformat.read(f, as_version=4)
 
     markdowns = []
-    exported_path = nbfile.replace('.ipynb', '_exported.py')
+    exported_path = nbfile.replace('.ipynb', '.py')
     with open(exported_path, 'w') as fp:
         fp.write(f"# from {nbfile}\n# {datetime.now()}\n\n")
         for cell in nb.cells:
@@ -154,7 +155,7 @@ def export_notebook(globals_ = None, *, nbfile:str = None):
                     source = re.sub(r'^%\w+[^\n]+\n', '', source, flags=re.MULTILINE)
 
                     # comment out ! statement
-                    source = re.sub(r'^(![^\n]+\n)', r'#\1', source, flags=re.MULTILINE)
+                    source = re.sub(r'(\n[ \t]+![^\n]+)', r'\n#\1', source, flags=re.MULTILINE|re.DOTALL)
 
                     # remove __nbook__
                     # source = re.sub(r"if __name__ == '__nbook__':\s+(\n[ \t]+[^\n]+|\n)+", r'', cell.source, flags=re.MULTILINE)
