@@ -151,11 +151,11 @@ def export_notebook(globals_ = None, *, nbfile:str = None):
                     for markdown in markdowns:
                         fp.write('# '+ markdown.replace('\n', '\n# ') + '\n')
 
-                    # remove notebook %reload_ext autoreload like statements
-                    source = re.sub(r'^%\w+[^\n]+\n', '', source, flags=re.MULTILINE)
+                    # remove notebook %reload_ext autoreload like statements, magic notebook cmd
+                    source = re.sub(r'(\n\s*)(%|!)', r'\1# \2', '\n'+source).lstrip()
 
                     # comment out ! statement
-                    source = re.sub(r'(\n[ \t]+![^\n]+)', r'\n#\1', source, flags=re.MULTILINE|re.DOTALL)
+                    # source = re.sub(r'(\n[ \t]+![^\n]+)', r'\n#\1', source, flags=re.MULTILINE|re.DOTALL)
 
                     # remove __nbook__
                     # source = re.sub(r"if __name__ == '__nbook__':\s+(\n[ \t]+[^\n]+|\n)+", r'', cell.source, flags=re.MULTILINE)

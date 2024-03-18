@@ -112,30 +112,30 @@ class out:
 
         if self.nl_before: print()
         try:
-            for k in txt.keys():
-                v = str(txt[k])
+            for key in txt.keys():
+                value = str(txt[key])
                 if label: print(f'{label}: '|blue, end='')
 
                 for m in self.markers:
-                    idx = len(v)
+                    idx = len(value) # initial rfind position
                     while True:
-                        idx = v.rfind(m, 0, idx)
+                        idx = value.rfind(m, 0, idx)
                         if idx < 0: break
-                        if v[idx-1] != 'm':
-                            v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
-                print(f"{k|green}= {v}")
+                        if idx==0 or value[idx-1] != 'm': # if it is part of \33[33m: already handled.
+                            value = value[:idx] + '\33[33m' + m + '\33[0m' + value[idx+len(m):]
+                print(f"{key|green}= {value}")
         except:
-            v = str(txt)
+            value = str(txt)
             for m in self.markers:
-                idx = len(v)
+                idx = len(value) # initial rfind position
                 while True:
-                    idx = v.rfind(m, 0, idx)
+                    idx = value.rfind(m, 0, idx)
                     if idx < 0: break
-                    if v[idx-1] != 'm':
-                        v = v[:idx] + '\33[33m' + m + '\33[0m' + v[idx+len(m):]
+                    if idx==0 or value[idx-1] != 'm': # if it is part of \33[33m: already handled.
+                        value = value[:idx] + '\33[33m' + m + '\33[0m' + value[idx+len(m):]
 
             if label: print(f'{label}= '|blue, end='')
-            print(v)
+            print(value)
 cout = out
 
 #
