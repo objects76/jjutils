@@ -106,41 +106,41 @@ yellow = text_color(text_color.yellow)
 #
 #
 import inspect
-class out:
-    def __init__(self, nl_before = True, suppress=False):
-        self.suppress = suppress
-        self.nl_before = nl_before
+# class out:
+#     def __init__(self, nl_before = True, suppress=False):
+#         self.suppress = suppress
+#         self.nl_before = nl_before
 
-    markers = []
-    def __ror__(self, txt):
+#     markers = []
+#     def __ror__(self, txt):
 
-        if self.suppress:
-            return
+#         if self.suppress:
+#             return
 
-        frame = inspect.currentframe()
-        caller_locals = frame.f_back.f_locals
+#         frame = inspect.currentframe()
+#         caller_locals = frame.f_back.f_locals
 
-        # print( caller_locals.items() )
+#         # print( caller_locals.items() )
 
-        arg_name = [name for name, value in caller_locals.items() if value is txt]
-        label = arg_name[0] if arg_name else None
-        # print( arg_name )
-        # arg_names = [name for name, value in caller_locals.items() if value in argv]
+#         arg_name = [name for name, value in caller_locals.items() if value is txt]
+#         label = arg_name[0] if arg_name else None
+#         # print( arg_name )
+#         # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
-        if self.nl_before: print()
-        try:
-            for k in txt.keys():
-                v = str(txt[k])
-                if label: print(f'{label}: '|blue, end='')
-                for m in out.markers:
-                    v = v.replace(m, m|yellow)
-                print(f"{k|green}= {v}")
+#         if self.nl_before: print()
+#         try:
+#             for k in txt.keys():
+#                 v = str(txt[k])
+#                 if label: print(f'{label}: '|blue, end='')
+#                 for m in out.markers:
+#                     v = v.replace(m, m|yellow)
+#                 print(f"{k|green}= {v}")
 
-        except:
-            for m in out.markers:
-                txt = str(txt).replace(m, m|yellow)
-            if label: print(f'{label}= '|blue, end='')
-            print(txt)
+#         except:
+#             for m in out.markers:
+#                 txt = str(txt).replace(m, m|yellow)
+#             if label: print(f'{label}= '|blue, end='')
+#             print(txt)
 
 #
 #
@@ -431,3 +431,24 @@ def chatgpt_conversation(messages, model_name = "gpt-3.5-turbo-1106"):
 
     except openai.RateLimitError as ex:
         raise RuntimeError(str(ex))
+
+
+
+
+import re
+class TextPromptFilter:
+    def __init__(self, remove_nl=False) -> None:
+        self.remove_nl = remove_nl
+
+    def __ror__(self, txt):
+
+        txt = re.sub(r"\n?([\t ]*#[^\n]+)", "", txt, re.DOTALL|re.M) # remove comment
+        if self.remove_nl:
+            txt = ' '.join(txt.splitlines())
+
+        return txt.strip()
+
+    def __call__(self, remove_nl):
+        self.remove_nl = remove_nl
+        return self
+
