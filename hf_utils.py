@@ -17,8 +17,13 @@ def get_basemodel(model_id):
     return ""
 
 
-def load_tokenizer(model_id, debug=False):
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+def load_tokenizer(model_id:str, special_tokens:list[str]=[], debug=False):
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, legacy=True)
+
+    if len(special_tokens) > 0:
+        num_new_tokens = tokenizer.add_special_tokens({
+            "additional_special_tokens": special_tokens
+        })
 
     if debug:
         print(tokenizer)
@@ -60,7 +65,7 @@ def load_model(model_id, merge = False):
             torch_dtype=torch.bfloat16, # H100
             quantization_config=bnb_config,
             )
-        model = PeftModel.from_pretrained(pretrained_model, model_id,  device_map="auto", torch_dtype = torch.bfloat16)
+        model:AutoModelForCausalLM = PeftModel.from_pretrained(pretrained_model, model_id,  device_map="auto", torch_dtype = torch.bfloat16)
 
         output_dir = Path('outputs') / model_id / Path('merged')
         if not output_dir.exists() and merge:
@@ -85,9 +90,12 @@ def load_model(model_id, merge = False):
     return model
 
 
-def load_llm(model_id, merge=False, debug=False):
-    tokenizer = load_tokenizer(model_id, debug=debug)
+def load_llm(model_id:str, special_tokens:list[str]=[], merge=False, debug=False):
+    tokenizer = load_tokenizer(model_id, special_tokens, debug=debug)
     model = load_model(model_id, merge=merge)
+
+    if len(special_tokens) > 0:
+        model.resize_token_embeddings(len(tokenizer))
 
     return model, tokenizer
 
@@ -95,7 +103,7 @@ def load_llm(model_id, merge=False, debug=False):
 
 class Generate:
     def __init__(self,
-                 model, tokenizer,
+                 model:AutoModelForCausalLM, tokenizer:AutoTokenizer,
                  max_new_tokens=256) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -110,7 +118,7 @@ class Generate:
 
     def __call__(self, messages:list, temperature=None, top_p=None, max_new_tokens=None):
 
-        input_ids = self.tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True).to(model.device)
+        input_ids = self.tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True).to(self.model.device)
 
         genargs = dict(
             pad_token_id= self.tokenizer.eos_token_id,

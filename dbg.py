@@ -84,8 +84,21 @@ def dump_packed(rawdata_path, printout=False):
 #
 #
 
+from pygments import highlight
+from pygments.formatters import Terminal256Formatter
+from pygments.lexers.web import JsonLexer
+from pygments.style import Style
+from pygments.token import Token
+import json
 
-class out:
+# https://pygments.org/docs/styles/
+class MyStyle(Style):
+    styles = {
+        Token.String: "ansiyellow",
+        Token.Name: "ansibrightgreen",
+    }
+
+class cout:
     def __init__(self, nl_before = False, suppress=False):
         self.suppress = suppress
         self.nl_before = nl_before
@@ -93,12 +106,14 @@ class out:
     markers = []
     @staticmethod
     def set_markers( markers_:list[str] ):
-        out.markers = sorted(markers_, key=len, reverse=True)
+        cout.markers = sorted(markers_, key=len, reverse=True)
 
     def __ror__(self, txt):
 
-        if self.suppress:
+        if txt is None or self.suppress:
             return
+        if self.nl_before:
+            print()
 
         frame = inspect.currentframe()
         caller_locals = frame.f_back.f_locals
@@ -110,33 +125,37 @@ class out:
         # print( arg_name )
         # arg_names = [name for name, value in caller_locals.items() if value in argv]
 
-        if self.nl_before: print()
         try:
-            for key in txt.keys():
-                value = str(txt[key])
-                if label: print(f'{label}: '|blue, end='')
+            dict_txt = dict(txt)
+            raw_json = json.dumps(dict(txt), indent=3, ensure_ascii=False)
 
-                for m in self.markers:
-                    idx = len(value) # initial rfind position
-                    while True:
-                        idx = value.rfind(m, 0, idx)
-                        if idx < 0: break
-                        if idx==0 or value[idx-1] != 'm': # if it is part of \33[33m: already handled.
-                            value = value[:idx] + '\33[33m' + m + '\33[0m' + value[idx+len(m):]
-                print(f"{key|green}= {value}")
+            colorful = highlight(
+                raw_json,
+                lexer=JsonLexer(),
+                formatter=Terminal256Formatter(style=MyStyle),
+            )
+            print(colorful)
+
         except:
             value = str(txt)
-            for m in self.markers:
-                idx = len(value) # initial rfind position
+            for marker in self.markers:
+                idx = len(value)  # initial rfind position
                 while True:
-                    idx = value.rfind(m, 0, idx)
-                    if idx < 0: break
-                    if idx==0 or value[idx-1] != 'm': # if it is part of \33[33m: already handled.
-                        value = value[:idx] + '\33[33m' + m + '\33[0m' + value[idx+len(m):]
-
-            if label: print(f'{label}= '|blue, end='')
+                    idx = value.rfind(marker, 0, idx)
+                    if idx < 0:
+                        break
+                    if (
+                        idx == 0 or value[idx - 1] != "m"
+                    ):  # if it is part of \33[33m: already handled.
+                        value = (
+                            value[:idx]
+                            + "\33[33m"
+                            + marker
+                            + "\33[0m"
+                            + value[idx + len(marker) :]
+                        )
             print(value)
-cout = out
+out = cout
 
 #
 #
