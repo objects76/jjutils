@@ -37,13 +37,19 @@ def time_to_seconds(time_str):
     total_seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000.0
     return total_seconds
 
-def to_hhmmss(seconds):
+def to_hhmmss(seconds, compact=False):
     secs, _, frac = str(seconds).partition('.')
     ms = (frac + '000')[:3]
     secs = int(secs)
     hours = secs // 3600
     minutes = (secs % 3600) // 60
     seconds = secs % 60
+
+    if compact:
+        if hours > 0:
+            return f"{hours:02}:{minutes:02}:{seconds:02}"
+        return f"{minutes:02}:{seconds:02}"
+
     return f"{hours:02}:{minutes:02}:{seconds:02},{ms}"
 
 def build_m3u( srcfile, mp4file, m3ufile ):
@@ -135,7 +141,12 @@ def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
         esec = end_time
     else:
         ssec, esec = time_to_seconds(start_time), time_to_seconds(end_time)
-    audio_file = mp4file + f'-{ssec}_{esec}.{audio_type}'
+
+    if esec - ssec <= 0:
+        audio_file = mp4file.replace('.mp4', f'.{audio_type}')
+    else:
+        audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
+
     audio_file = Path('./tmp') / Path(audio_file).name
     if not Path(audio_file).exists():
         Path('./tmp').mkdir(exist_ok=1)
