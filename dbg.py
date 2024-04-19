@@ -31,54 +31,54 @@ def static_vars(**kwargs):
 #
 #
 #
-def dump_packed(rawdata_path, printout=False):
-    import numpy as np
-    import os
-    npy_data = None
-    if isinstance(rawdata_path, str):
-        if rawdata_path.endswith('.npy'):
-            assert os.path.exists(rawdata_path)
-            npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
-            if npy_data.ndim == 0:
-                npy_data = npy_data.item()
-        elif rawdata_path.endswith('.npz'):
-            assert os.path.exists(rawdata_path)
-            npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
-            npy_data =  { k: npy_data[k] for k in npy_data.files }
-        elif rawdata_path.endswith('.pkl'):
-            npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
-        else:
-            print("\33[31m Not supported file format. \33[0m")
-            print('\t', rawdata_path)
-            return
-    elif type(rawdata_path) == dict:
-        npy_data = rawdata_path
-    elif ".npyio." in str(type(rawdata_path)):
-        npy_data = rawdata_path.item()
+# def dump_packed(rawdata_path, printout=False):
+#     import numpy as np
+#     import os
+#     npy_data = None
+#     if isinstance(rawdata_path, str):
+#         if rawdata_path.endswith('.npy'):
+#             assert os.path.exists(rawdata_path)
+#             npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
+#             if npy_data.ndim == 0:
+#                 npy_data = npy_data.item()
+#         elif rawdata_path.endswith('.npz'):
+#             assert os.path.exists(rawdata_path)
+#             npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
+#             npy_data =  { k: npy_data[k] for k in npy_data.files }
+#         elif rawdata_path.endswith('.pkl'):
+#             npy_data = np.load(rawdata_path, allow_pickle=True, encoding='latin1')
+#         else:
+#             print("\33[31m Not supported file format. \33[0m")
+#             print('\t', rawdata_path)
+#             return
+#     elif type(rawdata_path) == dict:
+#         npy_data = rawdata_path
+#     elif ".npyio." in str(type(rawdata_path)):
+#         npy_data = rawdata_path.item()
 
-    if printout:
-        def print_item(k,v):
-            if hasattr(v,'shape'):
-                typestr = str(type(v))
-                if 'scipy.sparse' in typestr: v = np.array(v.todense()) # SciPy sparse matrix => numpy matrix.
+#     if printout:
+#         def print_item(k,v):
+#             if hasattr(v,'shape'):
+#                 typestr = str(type(v))
+#                 if 'scipy.sparse' in typestr: v = np.array(v.todense()) # SciPy sparse matrix => numpy matrix.
 
-                print(f"\33[33m{k}: shape={v.shape}, dtype={v.dtype}, {typestr}\33[0m")
-                head = str(v)[:100]
-                head = head.replace('\n', '\n      ')
-                print( '     ', head )
-            elif len(v) > 10:
-                print(f"\33[33m{k}: len={len(v)}, {v[:10]}, {type(v)}\33[0m")
-            else:
-                print(f"\33[33m{k}: {v}, {type(v)}\33[0m")
+#                 print(f"\33[33m{k}: shape={v.shape}, dtype={v.dtype}, {typestr}\33[0m")
+#                 head = str(v)[:100]
+#                 head = head.replace('\n', '\n      ')
+#                 print( '     ', head )
+#             elif len(v) > 10:
+#                 print(f"\33[33m{k}: len={len(v)}, {v[:10]}, {type(v)}\33[0m")
+#             else:
+#                 print(f"\33[33m{k}: {v}, {type(v)}\33[0m")
 
-        if isinstance( npy_data, dict):
-            for k,v in npy_data.items():
-                print_item(k,v)
-        else:
-            filename = os.path.basename(rawdata_path)
-            print_item(filename, npy_data)
+#         if isinstance( npy_data, dict):
+#             for k,v in npy_data.items():
+#                 print_item(k,v)
+#         else:
+#             filename = os.path.basename(rawdata_path)
+#             print_item(filename, npy_data)
 
-    return npy_data
+#     return npy_data
 
 #
 #
@@ -136,7 +136,8 @@ class cout:
             )
             print(colorful)
 
-        except:
+        except Exception as ex:
+            print('cout:', ex)
             value = str(txt)
             for marker in self.markers:
                 idx = len(value)  # initial rfind position
@@ -215,24 +216,33 @@ class StopExecution(Exception):
     def _render_traceback_(self): print('stop execution')
 
 
-class _srcpos:
-    def __get__(self, inst, owner):
-        return f"{inspect.stack()[1].function} :{inspect.stack()[1].lineno}"
+# class _srcpos:
+#     def __get__(self, inst, owner):
+#         return f"{inspect.stack()[1].function} :{inspect.stack()[1].lineno}"
 
 
-class Debug:
-    class raise_StopCell:
-        class StopCell(BaseException):
-            def _render_traceback_(self):
-                print('\033[30;100m', '[ STOP CELL EXECUTION ]', '\033[0m')
+# class Debug:
+#     class raise_StopCell:
+#         class StopCell(BaseException):
+#             def _render_traceback_(self):
+#                 print('\033[30;100m', '[ STOP CELL EXECUTION ]', '\033[0m')
 
-        def __get__(self, instance, owner):
-            raise self.StopCell()
+#         def __get__(self, instance, owner):
+#             raise self.StopCell()
 
-    stop_cell = raise_StopCell()
+#     stop_cell = raise_StopCell()
+#     srcpos = _srcpos()
 
-    srcpos = _srcpos()
 
+import time
+class ExecutionTime:
+    def start(self):
+        self.tick = time.time()
+
+    def check(self, name):
+        elapsed = time.time() - self.tick
+        print(f'time of {name}: {elapsed:.1f}sec')
+        self.tick = time.time()
 
 
 
