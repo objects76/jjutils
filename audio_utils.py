@@ -135,7 +135,7 @@ if __name__ == '__main__':
 # %%
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 
-def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
+def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
     if isinstance(start_time, int) and isinstance(end_time, int):
         ssec = start_time
         esec = end_time
@@ -147,9 +147,9 @@ def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
     else:
         audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
 
-    audio_file = Path('./tmp') / Path(audio_file).name
+    audio_file = Path(outdir) / Path(audio_file).name
     if not Path(audio_file).exists():
-        Path('./tmp').mkdir(exist_ok=1)
+        Path(outdir).mkdir(exist_ok=1)
         if audio_type == 'wav':
             # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
             # !ffmpeg -i dataset/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 dataset/ntt.meeting_16k.wav
@@ -158,7 +158,7 @@ def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
             if ssec == 0 and esec == 0:
                 cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
             else:
-                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
+                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
         elif audio_type == 'mp3':
             if ssec == 0 and esec == 0:
                 cmds = f'{FFMPEG} -i {mp4file} -vn -acodec mp3 -b:a 192k {audio_file}'
