@@ -151,7 +151,10 @@ def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
     if not Path(audio_file).exists():
         Path('./tmp').mkdir(exist_ok=1)
         if audio_type == 'wav':
-            ar = '-ar 16k'
+            # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
+            # !ffmpeg -i dataset/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 dataset/ntt.meeting_16k.wav
+            ac = '-ac 1'
+            ar = '-ar 16000'
             if ssec == 0 and esec == 0:
                 cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
             else:
