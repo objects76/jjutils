@@ -189,7 +189,7 @@ if __name__ == '__main__':
     get_segment('dataset/ntt.meeting.srt')
 # %%
 from pydub import AudioSegment
-import simpleaudio as sa # sudo apt-get install libasound2-dev, pip install simpleaudio
+import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
 def play_audio(file_path: str, ranges: list, speed: float = 1.0):
     # Load the full audio file
