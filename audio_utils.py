@@ -148,7 +148,7 @@ def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type 
         audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
 
     audio_file = Path(outdir) / Path(audio_file).name
-    if not Path(audio_file).exists():
+    if not Path(audio_file).exists() or False:
         Path(outdir).mkdir(exist_ok=1)
         if audio_type == 'wav':
             # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
@@ -156,7 +156,7 @@ def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type 
             ac = '-ac 1'
             ar = '-ar 16000'
             if ssec == 0 and esec == 0:
-                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
+                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
             else:
                 cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
         elif audio_type == 'mp3':
