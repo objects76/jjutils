@@ -217,3 +217,27 @@ def play_audio(file_path: str, ranges: list, speed: float = 1.0):
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
         play_obj.wait_done()
+
+#%%
+import subprocess
+import json
+
+def get_audio_info(file_path):
+    # https://ottverse.com/ffprobe-comprehensive-tutorial-with-examples/
+    command = 'ffprobe -v error -show_entries format=duration:stream=bit_rate,sample_rate,channels -of json ' + file_path
+    result = subprocess.run(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    # Convert output from JSON string to Python dictionary
+    try:
+        info = json.loads(result.stdout)
+
+        audio_info = {
+            "channels": info['streams'][0]['channels'],
+            "bit_rate": int(info['streams'][0]['bit_rate']),
+            "sample_rate": int(info['streams'][0]['sample_rate']),
+            "duration": float(info['format']['duration'])
+        }
+        return audio_info
+    except (KeyError, json.JSONDecodeError) as e:
+        print("Error parsing information:", e)
+        return None
