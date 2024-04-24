@@ -135,7 +135,11 @@ if __name__ == '__main__':
 # %%
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 
-def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
+# import pydub
+# sound = pydub.AudioSegment.from_file('dataset/jp.20240319.mp4').set_channels(1)
+# sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
+
+def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
     if isinstance(start_time, int) and isinstance(end_time, int):
         ssec = start_time
         esec = end_time
@@ -147,15 +151,18 @@ def get_audio(mp4file, start_time = 0, end_time = 0, audio_type = 'mp3'):
     else:
         audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
 
-    audio_file = Path('./tmp') / Path(audio_file).name
-    if not Path(audio_file).exists():
-        Path('./tmp').mkdir(exist_ok=1)
+    audio_file = Path(outdir) / Path(audio_file).name
+    if not Path(audio_file).exists() or False:
+        Path(outdir).mkdir(exist_ok=1)
         if audio_type == 'wav':
-            ar = '-ar 16k'
+            # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
+            # !ffmpeg -i dataset/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 dataset/ntt.meeting_16k.wav
+            ac = '-ac 1'
+            ar = '-ar 16000'
             if ssec == 0 and esec == 0:
-                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
+                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
             else:
-                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ar} {audio_file}'
+                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
         elif audio_type == 'mp3':
             if ssec == 0 and esec == 0:
                 cmds = f'{FFMPEG} -i {mp4file} -vn -acodec mp3 -b:a 192k {audio_file}'
@@ -217,3 +224,28 @@ def play_audio(file_path: str, ranges: list, speed: float = 1.0):
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
         play_obj.wait_done()
+
+#%%
+import subprocess
+import json
+
+def get_audio_info(file_path):
+    # https://ottverse.com/ffprobe-comprehensive-tutorial-with-examples/
+    command = 'ffprobe -v error -show_entries format=duration:stream=bit_rate,sample_rate,channels -of json ' + file_path
+    result = subprocess.run(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    # Convert output from JSON string to Python dictionary
+    try:
+        info = json.loads(result.stdout)
+
+        audio_info = {
+            "file": file_path,
+            "channels": info['streams'][0]['channels'],
+            "bit_rate": int(info['streams'][0]['bit_rate']),
+            "sample_rate": int(info['streams'][0]['sample_rate']),
+            "duration": float(info['format']['duration'])
+        }
+        return audio_info
+    except (KeyError, json.JSONDecodeError) as e:
+        print("Error parsing information:", e)
+        return None

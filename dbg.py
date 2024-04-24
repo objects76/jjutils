@@ -241,7 +241,7 @@ class ExecutionTime:
 
     def check(self, name):
         elapsed = time.time() - self.tick
-        print(f'time of {name}: {elapsed:.1f}sec')
+        print(f'time of {name}: {elapsed:.1f}sec'|yellow)
         self.tick = time.time()
 
 
