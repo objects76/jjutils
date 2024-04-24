@@ -3,8 +3,8 @@
 import sys, os, re
 if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
-import os, huggingface_hub # !pip install huggingface_hub[hf_transfer]
-huggingface_hub.login(token = os.environ.get('HF_TOKEN'), add_to_git_credential=True)
+# import os, huggingface_hub # !pip install huggingface_hub[hf_transfer]
+# huggingface_hub.login(token = os.environ.get('HF_TOKEN'), add_to_git_credential=True)
 
 from pathlib import Path
 from pprint import pprint
