@@ -135,6 +135,10 @@ if __name__ == '__main__':
 # %%
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 
+# import pydub
+# sound = pydub.AudioSegment.from_file('dataset/jp.20240319.mp4').set_channels(1)
+# sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
+
 def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
     if isinstance(start_time, int) and isinstance(end_time, int):
         ssec = start_time
@@ -235,6 +239,7 @@ def get_audio_info(file_path):
         info = json.loads(result.stdout)
 
         audio_info = {
+            "file": file_path,
             "channels": info['streams'][0]['channels'],
             "bit_rate": int(info['streams'][0]['bit_rate']),
             "sample_rate": int(info['streams'][0]['sample_rate']),
