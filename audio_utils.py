@@ -139,7 +139,7 @@ FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 # sound = pydub.AudioSegment.from_file('dataset/jp.20240319.mp4').set_channels(1)
 # sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
 
-def get_audio(mp4file, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
+def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
     if isinstance(start_time, int) and isinstance(end_time, int):
         ssec = start_time
         esec = end_time
@@ -195,17 +195,27 @@ def get_segment(from_srt:Path):
 if __name__ == '__main__':
     get_segment('dataset/ntt.meeting.srt')
 # %%
-from pydub import AudioSegment
+from pydub import AudioSegment, generators
 import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
-def play_audio(file_path: str, ranges: list, speed: float = 1.0):
+def play_audio(file_path: str, *, ranges: list, speed: float = 1.0, start_end_notifier = False):
     # Load the full audio file
+    assert file_path.endswith('.wav') or file_path.endswith('.mp3')
     audio = AudioSegment.from_mp3(file_path)
+
+
+    # Generate a 0.1-second beep at 550 Hz (A4 note)
+    beep_duration = 100  # duration in milliseconds
+    beep_frequency = 550  # frequency in Hz
+    beep_volume = -20  # reduce the beep volume in dB
+    beep = generators.Sine(beep_frequency).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
 
     segments = []
     for start, end in ranges:
         # Extract the specific range (times are in milliseconds)
         segment = audio[start * 1000:end * 1000]
+        if start_end_notifier:
+            segment = beep + segment + beep
 
         # Speed up the segment
         if speed != 1.0:
@@ -218,7 +228,7 @@ def play_audio(file_path: str, ranges: list, speed: float = 1.0):
     # Play each segment
     for segment, (start,end) in zip(segments, ranges):
         # Convert segment to raw audio data for playback
-        print(f'{start} ~ {end}: {end-start:.1f}sec')
+        # print(f'{start:.1f} ~ {end.1f}: {end-start:.1f}sec')
         raw_data = segment.raw_data
         wave_obj = sa.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
