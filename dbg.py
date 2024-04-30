@@ -236,6 +236,9 @@ class StopExecution(Exception):
 
 import time
 class ExecutionTime:
+    def __init__(self) -> None:
+        self.start()
+
     def start(self):
         self.tick = time.time()
 

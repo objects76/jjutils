@@ -28,6 +28,7 @@ import subprocess
 #%% - m3u
 def time_to_seconds(time_str):
     if not time_str: return 0
+    time_str = time_str.strip()
     if time_str.count(':') == 1: time_str = "00:" + time_str
     millis = 0
     hours, minutes, seconds = time_str.split(':')
@@ -203,19 +204,19 @@ def play_audio(file_path: str, *, ranges: list, speed: float = 1.0, start_end_no
     assert file_path.endswith('.wav') or file_path.endswith('.mp3')
     audio = AudioSegment.from_mp3(file_path)
 
-
     # Generate a 0.1-second beep at 550 Hz (A4 note)
     beep_duration = 100  # duration in milliseconds
     beep_frequency = 550  # frequency in Hz
     beep_volume = -20  # reduce the beep volume in dB
-    beep = generators.Sine(beep_frequency).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+    beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+    beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
 
     segments = []
-    for start, end in ranges:
+    for (start, end) in ranges:
         # Extract the specific range (times are in milliseconds)
         segment = audio[start * 1000:end * 1000]
         if start_end_notifier:
-            segment = beep + segment + beep
+            segment = beep_start + segment + beep_end
 
         # Speed up the segment
         if speed != 1.0:
@@ -233,7 +234,9 @@ def play_audio(file_path: str, *, ranges: list, speed: float = 1.0, start_end_no
         wave_obj = sa.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
-        play_obj.wait_done()
+        if len(ranges) == 1:
+            return play_obj
+        play_obj.wait_done()# play_obj.is_playing
 
 #%%
 import subprocess
@@ -253,7 +256,8 @@ def get_audio_info(file_path):
             "channels": info['streams'][0]['channels'],
             "bit_rate": int(info['streams'][0]['bit_rate']),
             "sample_rate": int(info['streams'][0]['sample_rate']),
-            "duration": float(info['format']['duration'])
+            "duration": float(info['format']['duration']),
+            "hhmmss": to_hhmmss(float(info['format']['duration']))
         }
         return audio_info
     except (KeyError, json.JSONDecodeError) as e:
