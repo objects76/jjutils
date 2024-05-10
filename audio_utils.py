@@ -38,6 +38,9 @@ def time_to_seconds(time_str):
     total_seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000.0
     return total_seconds
 
+def hhmmss_to_seconds(time_str):
+    return time_to_seconds(time_str)
+
 def to_hhmmss(seconds, compact=False):
     secs, _, frac = str(seconds).partition('.')
     ms = (frac + '000')[:3]
@@ -174,6 +177,12 @@ def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_ty
         subprocess.run(cmds.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     return audio_file.as_posix()
+
+def replace_mp4_audio(mp4file, audioin, mp4output):
+    cmds = f'{FFMPEG} -i {mp4file} -i {audioin} -c:v copy -map 0:v:0 -map 1:a:0 -shortest {mp4output}'
+    # print(cmds)
+    subprocess.run(cmds.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
 
 
 if __name__ == '__main__':
