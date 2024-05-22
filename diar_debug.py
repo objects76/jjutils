@@ -122,22 +122,20 @@ class DebugUI:
         self._setup_ui()
 
     def _setup_ui(self):
-        self.roi_ui = None
-        def select_speaker(speaker):
-            if self.roi_ui != None:
-                self.roi_ui.widget.close()
-                self.roi_ui.widget.children = ()
+        self.roi_widgets = None
+        def select_speaker(change):
+            speaker = change['new']
 
             segs = self.rawsegs if speaker == 'All' else [item for item in self.rawsegs if item.speaker_tag == speaker]
-            self.roi_ui = self._interact_video(segs, f'diar: {speaker}', from_handler=True)
+            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
 
         speakers = set( seg.speaker_tag for seg in self.rawsegs)
         speakers = ['All', *sorted(speakers)]
-        # print('speakers:', speakers)
-        if len(speakers) > 2:
-            widgets.interact(select_speaker, speaker=speakers)
-        else:
-            self._interact_video(self.segs_inter, f'diar: All')
+        dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
+        dropdown.observe(select_speaker, names='value')
+        display(dropdown)
+        select_speaker({"new":"All"})
+
         btn_ff = widgets.Button(description='>>')
         btn_ff.on_click(lambda b: (self.player.forward(5000)))
         display(btn_ff)
@@ -149,17 +147,15 @@ class DebugUI:
         display(btn_close)
         pass
 
-    def _interact_video(self, pklsegs, label='', from_handler=False):
+    def _interact_video(self, pklsegs, label='', ui=None):
 
         count = len(pklsegs)
         details = widgets.Label(value=f'')
 
-        ui_setup_tick = time.time()
         def fn_slider(idx):
             pklseg = pklsegs[idx]
             details.value = f"{pklseg}"
 
-            if time.time() - ui_setup_tick < 1: return
             # if self.vlc: self.vlc.stop()
             dur = round(pklseg.end_sec - pklseg.start_sec,1)
             self.player.play(pklseg.start_sec, pklseg.end_sec)
@@ -170,19 +166,23 @@ class DebugUI:
         title = widgets.Label(value=f'> {label}: {count= }',
                             style={'background': 'green', 'text_color': 'white'},
                             layout=widgets.Layout(width='400px'),)
-        display(title, details, replay_btn)
 
-        if count == 0: return
         slider = widgets.IntSlider(
             description=f'clips: ',
-            min=0, max=len(pklsegs)-1, step=1,
+            min=0, max= max(0, len(pklsegs)-1), step=1,
             continuous_update=False,
             style={'description_width': 'initial'},
             )
+        slider.observe(lambda x: fn_slider(x['new']), names='value', type='change')
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
-        if from_handler: display(slider)
-        widgets.interact(fn_slider, idx = slider)
 
+        vbox = widgets.VBox([title, details, slider, replay_btn])
+        if ui == None:
+            ui = vbox
+            display(ui, display_id='11')
+
+        ui.children = vbox.children
+        return ui
 
 # dui = DebugUI(mp4file)
 # dui.set_segment(no_shortvoice_segs)
