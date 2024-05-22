@@ -13,13 +13,28 @@ class VlcPlayer:
 
         self.instance = vlc.Instance(opts)
         self.player = self.instance.media_player_new()
-        self.player.video_set_scale(1.5)
+        # self.player.video_set_scale(3)
         self.stop_play = True
         self.async_play_task = None
+        self.text = ''
 
     def set_file(self, mp4path):
         media = self.instance.media_new(mp4path)
         self.player.set_media(media)
+
+        media.parse()
+        width,height = self.player.video_get_size()
+        scale = 1.5
+        if width*height <= 640*360: scale = 3
+        self.player.video_set_scale(scale)
+
+
+        # for track in media.tracks_get():
+        #     track:vlc.MediaTrack
+        #     if track.type == vlc.TrackType.video:
+        #         print(type(track.video))
+        #         # print(f"Video resolution: {track.video.width} x {track.video.height}")
+
 
     def __del__(self): self.clear()
 
@@ -46,8 +61,13 @@ class VlcPlayer:
         self.player.set_time(int(start_sec * 1000))
         self.end_ms = int(end_sec * 1000)
 
-        while self.stop_play == False and self.player.get_time() < self.end_ms:
+        while self.stop_play == False:
+            remained = self.end_ms - self.player.get_time()
+            if remained <= 0: break
+            self.player.video_set_marquee_string(vlc.VideoMarqueeOption.Text,
+                                                 self.text + f'\n: {int(remained/1000)} sec remained')
             await asyncio.sleep(0.1)
+
 
         self.player.pause()
         self.async_play_task = None
@@ -86,6 +106,7 @@ class VlcPlayer:
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Opacity, 255)
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Timeout, timeout)
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Size, 40)
+        self.text = text
 
 
 
