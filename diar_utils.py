@@ -6,26 +6,29 @@ from dataclasses import dataclass, asdict
 from jjutils.audio_utils import hhmmss_to_seconds
 from jjutils.audio_utils import to_hhmmss
 
+#%% - data structure
 @dataclass
 class PklSegment:
     start_sec: float = 0
     end_sec: float = 0
-    speaker_tag: int = None
+    speaker_tag: str|int = None
+
+    def __post_init__(self):
+        self.start_sec = round(self.start_sec, 1)
+        self.end_sec = round(self.end_sec, 1)
 
     def copy(self):
         return PklSegment(self.start_sec, self.end_sec, self.speaker_tag)
 
+    def __repr__(self) -> str:
+        dur= self.end_sec-self.start_sec
+        return (
+            f"PklSegment: {dur= :.1f}  [{self.speaker_tag}]  {self.start_sec} ~ {self.end_sec}"
+            f"  {to_hhmmss(self.start_sec)} ~ {to_hhmmss(self.end_sec)}"
+        )
 
 
-
-# list[PklSegment] to Annotation.
-def pklsegments_to_annotation(pklsegs:list[PklSegment]) -> object:
-    from pyannote.core import Annotation, Segment
-    anno = Annotation()
-    for seg in pklsegs:
-        anno[Segment(seg.start_sec, seg.end_sec)] = seg.speaker_tag
-    return anno
-
+#%% - segments fine tuning
 
 # remove_overlapped
 def remove_overlapped(pklsegs:list[PklSegment], debug=False) -> list[PklSegment]:
@@ -57,7 +60,7 @@ def remove_overlapped(pklsegs:list[PklSegment], debug=False) -> list[PklSegment]
             if dur_old_no_overlapped > 1.0: # if longer than 1sec
                 if debug:
                     print(
-                        f'update old: {to_hhmmss(old_seg.start_seg, True)} ~ {to_hhmmss(old_seg.end_seg, True)}, {dur_old:.1f}) ->'
+                        f'update old: {to_hhmmss(old_seg.start_sec, True)} ~ {to_hhmmss(old_seg.end_sec, True)}, {dur_old:.1f}) ->'
                         f' {dur_old_no_overlapped:.1f}):{old_seg.speaker_tag}'
                         )
                 no_overlapped_segs[-1] = PklSegment(old_seg.start_sec, seg.start_sec, old_seg.speaker_tag)
@@ -69,9 +72,6 @@ def remove_overlapped(pklsegs:list[PklSegment], debug=False) -> list[PklSegment]
         old_seg = seg
 
     return no_overlapped_segs
-
-
-
 
 
 # remove_short_mute
@@ -92,11 +92,23 @@ def remove_short_mute(pklsegs:list[PklSegment], debug=False) -> list[PklSegment]
         segment = pklsegs[pos]
         pos += 1
 
+        duration = segment.end_sec - segment.start_sec
+        if duration < SHORT_NOISE_THRESHOLD and pos < len(pklsegs) :
+            next_segment = pklsegs[pos]
+            # case 1: long-mute [short] long-mute => remove the segment.
+            pre_mute = abs(old_seg.end_sec - segment.start_sec)
+            next_mute = abs(segment.end_sec - next_segment.start_sec)
+            if pre_mute > MUTE_THRESHOLD and next_mute > MUTE_THRESHOLD:
+                if debug:
+                    print(f'skip short island: '
+                        f'({to_hhmmss(segment.start_sec, True)}, {duration=:.1f}), {segment.speaker_tag}'
+                        )
+                continue
+
         if pos < len(pklsegs) and old_seg.speaker_tag != segment.speaker_tag:
             # check current segment is noise or not.
             # |--- A --- B? --A--|, Assume B as noise.
             dur_old = old_seg.end_sec - old_seg.start_sec
-            duration = segment.end_sec - segment.start_sec
             next_segment = pklsegs[pos]
             if duration < SHORT_NOISE_THRESHOLD and next_segment.speaker_tag == old_seg.speaker_tag:
                 if debug:
@@ -127,16 +139,94 @@ def remove_short_mute(pklsegs:list[PklSegment], debug=False) -> list[PklSegment]
 
 
 
+def remove_short_voice(pklsegs:list[PklSegment], SHORT_THRESHOLD = 0.7, debug=False) -> list[PklSegment]:
+    merged_segs = []
+
+    if debug:
+        print(f"{SHORT_THRESHOLD=}")
+
+    pos = 0
+    while pos < len(pklsegs):
+        segment = pklsegs[pos]
+        pos += 1
+
+        duration = segment.end_sec - segment.start_sec
+        if duration < SHORT_THRESHOLD:
+            continue
+
+        merged_segs.append(segment)
+
+    return merged_segs
 
 
 
-from jjutils.audio_utils import to_hhmmss
-# 1
-# 00:00:00,000 --> 00:00:29,980
-# ご視聴ありがとうございました
+#%% - format conversion
 
-# 2
-def pklsegments_to_srt(pklsegs:list[PklSegment], srt_path):
+# list[PklSegment] to Annotation.
+def pklsegments_to_annotation(pklsegs:list[PklSegment]) -> object:
+    from pyannote.core import Annotation, Segment
+    anno = Annotation()
+    for seg in pklsegs:
+        anno[Segment(seg.start_sec, seg.end_sec)] = seg.speaker_tag
+    return anno
+
+def load_rttm(rttm_path) -> object:
+    from pyannote.core import Annotation, Segment
+    annotation = Annotation()
+    with open(rttm_path, 'r') as file:
+        for line in file:
+            parts = line.strip().split()
+
+            start = float(parts[3])
+            end = start + float(parts[4])
+            segment = Segment(start, end)
+            speaker = parts[7]
+            annotation[segment] = speaker
+    return annotation
+
+def get_inter_pklsegments(segments: list[PklSegment]):
+    intersegments = []
+    end = 0.0
+    for seg in segments:
+        if end < seg.start_sec:
+            intersegments.append( PklSegment(end, seg.start_sec, 'INTER'))
+        end = seg.end_sec
+    return intersegments
+
+import hashlib
+def annotation_to_pklsegments(annotation:object, interseg = False):
+    from pyannote.core import Annotation, Segment
+    annotation:Annotation
+
+    def get_speaker_tag(tag):
+        try:
+            return int(tag[8:])
+        except:
+            return str(tag)
+            return int(hashlib.md5(tag.encode('utf-8')).hexdigest()[:8], 16)
+
+    segments = [
+        PklSegment( turn.start, turn.end, get_speaker_tag(speaker))
+        for turn, _, speaker in annotation.itertracks(yield_label=True)
+    ]
+
+    if interseg:
+        return segments, get_inter_pklsegments(segments)
+    else:
+        return segments
+
+
+
+def deepgram_to_pklsegments(dg_response:object) -> list[PklSegment]:
+    paragraphs = dg_response['results']['channels'][0]['alternatives'][0]['paragraphs']['paragraphs']
+
+    segments = []
+    for pg in paragraphs:
+        seg = PklSegment(pg['start'], pg['end'], pg['speaker'])
+        segments.append(seg)
+    return segments
+
+def pklsegments_to_srt(pklsegs:list[PklSegment], srt_path, *, pad_onset=0, pad_offset=0):
     with open(srt_path, "w") as fpout:
         nth = 1
         pklseg = PklSegment(0,0,None)
@@ -169,10 +259,8 @@ def srt_to_pklsegments(srt_path):
 
 
 
-
-
-
-
+def pklsegments_to_m3u(pklsegs:list[PklSegment], m3ufile:str, mp4file:str, speaker_map = dict()):
+    return build_m3u(pklsegs, m3ufile, mp4file, speaker_map)
 
 def build_m3u(pklsegs:list[PklSegment], m3ufile:str, mp4file:str, speaker_map = dict()):
     BEGIN_MARGIN = 0.0
@@ -219,8 +307,6 @@ def build_m3u(pklsegs:list[PklSegment], m3ufile:str, mp4file:str, speaker_map = 
             )
             old_range = PklSegment(ssec, esec, speaker_id)
     print('gen:', m3ufile)
-
-
 
 
 

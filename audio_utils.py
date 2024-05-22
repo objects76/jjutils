@@ -34,6 +34,8 @@ def time_to_seconds(time_str):
     hours, minutes, seconds = time_str.split(':')
     if ',' in seconds:
       seconds, millis = seconds.split(',')
+    elif '.' in seconds:
+      seconds, millis = seconds.split('.')
 
     total_seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000.0
     return total_seconds
@@ -154,8 +156,12 @@ def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_ty
         audio_file = mp4file.replace('.mp4', f'.{audio_type}')
     else:
         audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
+        assert False, 'deprecated with start, end'
+
+    audio_file = Path(mp4file).with_suffix('.'+audio_type)
 
     audio_file = Path(outdir) / Path(audio_file).name
+
     if not Path(audio_file).exists() or False:
         Path(outdir).mkdir(exist_ok=1)
         if audio_type == 'wav':
@@ -208,10 +214,10 @@ if __name__ == '__main__':
 from pydub import AudioSegment, generators
 import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
-def play_audio(file_path: str, *, ranges: list, speed: float = 1.0, start_end_notifier = False):
+def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.0, start_end_notifier = False):
     # Load the full audio file
     assert file_path.endswith('.wav') or file_path.endswith('.mp3')
-    audio = AudioSegment.from_mp3(file_path)
+    audio = AudioSegment.from_file(file_path)
 
     # Generate a 0.1-second beep at 550 Hz (A4 note)
     beep_duration = 100  # duration in milliseconds
@@ -252,6 +258,8 @@ import subprocess
 import json
 
 def get_audio_info(file_path):
+    if not file_path or not Path(file_path).exists():
+        return
     # https://ottverse.com/ffprobe-comprehensive-tutorial-with-examples/
     command = 'ffprobe -v error -show_entries format=duration:stream=bit_rate,sample_rate,channels -of json ' + file_path
     result = subprocess.run(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -272,3 +280,44 @@ def get_audio_info(file_path):
     except (KeyError, json.JSONDecodeError) as e:
         print("Error parsing information:", e)
         return None
+
+#%%
+from pydub import AudioSegment, generators
+import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
+
+def get_audio_segments(file_path: Path, *, pklsegs: list, start_end_notifier = True) -> list[AudioSegment]:
+    # Load the full audio file
+    assert file_path.suffix == '.wav' or file_path.suffix == '.mp3'
+    audio = AudioSegment.from_file(file_path)
+
+    # Generate a 0.1-second beep at 550 Hz (A4 note)
+    beep_duration = 100  # duration in milliseconds
+    beep_frequency = 550  # frequency in Hz
+    beep_volume = -20  # reduce the beep volume in dB
+    beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+    beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+
+    wave_segments = []
+    for seg in pklsegs:
+
+        # Extract the specific range (times are in milliseconds)
+        segment = audio[seg.start_sec * 1000:seg.end_sec * 1000]
+
+        if start_end_notifier:
+            segment = beep_start + segment + beep_end
+
+        wave_segments.append(segment)
+    return wave_segments
+
+
+def play_segment(segment:AudioSegment, speed:float=1.0):
+    if speed != 1.0:
+        new_frame_rate = int(segment.frame_rate * speed)
+        segment = segment.set_frame_rate(new_frame_rate)
+
+    raw_data = segment.raw_data
+    wave_obj = sa.WaveObject(raw_data, num_channels=segment.channels,
+                            bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
+    play_obj = wave_obj.play()
+    return play_obj
+
