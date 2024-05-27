@@ -144,6 +144,8 @@ class DebugUI:
 
     def _setup_ui(self):
         self.roi_widgets = None
+        self.is_playall = False
+
         def select_speaker(change):
             speaker = change['new']
 
@@ -168,12 +170,32 @@ class DebugUI:
         display(btn_close)
         pass
 
+    async def aplay_all(self, pklsegs):
+        for seg in pklsegs:
+            if not self.is_playall: break
+            dur = round(seg.end_sec - seg.start_sec,1)
+            self.player.play(seg.start_sec, seg.end_sec)
+            self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
+            await self.player.aplay(seg.start_sec, seg.end_sec)
+            await asyncio.sleep(2)
+        self.is_playall = False
+
+    def on_play_all(self, btn, pklsegs):
+        self.is_playall = not self.is_playall
+        if self.is_playall:
+            btn.description = 'Stop playing'
+            return asyncio.create_task(self.aplay_all(pklsegs))
+        else:
+            btn.description = 'PlayAll'
+            return
+
     def _interact_video(self, pklsegs, label='', ui=None):
 
         count = len(pklsegs)
         details = widgets.Label(value=f'')
 
         def fn_slider(idx):
+            self.is_playall = False
             pklseg = pklsegs[idx]
             details.value = f"{pklseg}"
 
@@ -183,6 +205,8 @@ class DebugUI:
             self.player.draw_text(f"{pklseg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
 
         replay_btn = widgets.Button(description='Replay', )
+        playall_btn = widgets.Button(description='PlayAll', )
+        playall_btn.on_click(lambda btn: self.on_play_all(btn, pklsegs))
 
         title = widgets.Label(value=f'> {label}: {count= }',
                             style={'background': 'green', 'text_color': 'white'},
@@ -197,7 +221,7 @@ class DebugUI:
         slider.observe(lambda x: fn_slider(x['new']), names='value', type='change')
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
 
-        vbox = widgets.VBox([title, details, slider, replay_btn])
+        vbox = widgets.VBox([title, details, slider, widgets.HBox([replay_btn, playall_btn])])
         if ui == None:
             ui = vbox
             display(ui, display_id='11')
