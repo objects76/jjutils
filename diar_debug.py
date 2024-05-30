@@ -2,6 +2,7 @@
 # !pip install python-vlc
 import asyncio, os
 import vlc
+import gc
 
 class VlcPlayer:
     def __init__(self, width = 1920*2, height = 1080*2):
@@ -24,9 +25,9 @@ class VlcPlayer:
 
         media.parse()
         width,height = self.player.video_get_size()
-        scale = 1.5
-        if width*height <= 640*360: scale = 3
-        self.player.video_set_scale(scale)
+        # scale = 1.5
+        # if width*height <= 640*360: scale = 3
+        # self.player.video_set_scale(scale)
 
 
         # for track in media.tracks_get():
@@ -49,6 +50,7 @@ class VlcPlayer:
         del self.player
         del self.instance
         self.instance = self.player = None
+        gc.collect()
 
     async def _aplay(self, start_sec:float, end_sec:float):
 
@@ -117,21 +119,42 @@ from jjutils.diar_utils import (
     PklSegment,
 )
 
+from pyannote.database.util import load_rttm
+
 from IPython.display import display
 import ipywidgets as widgets
-import time
+from functools import singledispatch, singledispatchmethod
+from jjutils.diar_utils import (
+    annotation_to_pklsegments
+)
+
+
+from IPython.display import Javascript
+def set_focus(widget):
+    display(Javascript(f"""
+        var slider = document.querySelector("#{widget.model_id} input");
+        if (slider) {{
+            slider.focus();
+        }}
+    """))
+
 
 class DebugUI:
-
+    _player = None
     def __init__(self, video_path = None) -> None:
-        self.player = VlcPlayer()
+        if DebugUI._player:
+            DebugUI._player.clear()
+
+        self.player = DebugUI._player = VlcPlayer()
         if video_path:
             self.set_videofile(video_path)
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
         self.player.set_file(video_path)
+        self.video_path = video_path
 
+    @singledispatchmethod
     def set_segment(self, rawsegs:list[PklSegment], *, crop_start=0, crop_end=0, min_sec = 0):
 
         if crop_end > 0:
@@ -142,21 +165,36 @@ class DebugUI:
 
         self._setup_ui()
 
+    @set_segment.register
+    def _(self, anno_path:str, *, crop_start=0, crop_end=0, min_sec = 0):
+
+        if anno_path.endswith('.rttm'):
+            _, anno = load_rttm(anno_path).popitem()
+            segs = annotation_to_pklsegments(anno)
+            self.set_segment(segs, crop_start=crop_start, crop_end=crop_end, min_sec=min_sec)
+        else:
+            assert False, f"invalid file format: {anno_path}"
+
+
     def _setup_ui(self):
         self.roi_widgets = None
         self.is_playall = False
 
+
+        lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
+        lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
         def select_speaker(change):
             speaker = change['new']
 
             segs = self.rawsegs if speaker == 'All' else [item for item in self.rawsegs if item.speaker_tag == speaker]
             self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
+            # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
 
         speakers = set( seg.speaker_tag for seg in self.rawsegs)
         speakers = ['All', *sorted(speakers)]
         dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
         dropdown.observe(select_speaker, names='value')
-        display(dropdown)
+        display(widgets.HBox([dropdown, lbl_title]))
         select_speaker({"new":"All"})
 
         btn_ff = widgets.Button(description='>>')
@@ -170,21 +208,27 @@ class DebugUI:
         display(btn_close)
         pass
 
-    async def aplay_all(self, pklsegs):
-        for seg in pklsegs:
-            if not self.is_playall: break
-            dur = round(seg.end_sec - seg.start_sec,1)
-            self.player.play(seg.start_sec, seg.end_sec)
-            self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
-            await self.player.aplay(seg.start_sec, seg.end_sec)
-            await asyncio.sleep(2)
+    async def aplay_all(self, pklsegs, slider:widgets.IntSlider):
+        print('0. aplay_all done', self.is_playall)
+        while slider.value < slider.max and self.is_playall:
+            slider.value = slider.value + 1
+            await asyncio.sleep(3)
+
+        # for seg in pklsegs:
+        #     if not self.is_playall: break
+        #     dur = round(seg.end_sec - seg.start_sec,1)
+        #     self.player.play(seg.start_sec, seg.end_sec)
+        #     self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
+        #     await self.player.aplay(seg.start_sec, seg.end_sec)
+        #     await asyncio.sleep(2)
+        print('1. aplay_all done', self.is_playall)
         self.is_playall = False
 
-    def on_play_all(self, btn, pklsegs):
+    def on_play_all(self, btn, pklsegs, slider:widgets.IntSlider):
         self.is_playall = not self.is_playall
         if self.is_playall:
             btn.description = 'Stop playing'
-            return asyncio.create_task(self.aplay_all(pklsegs))
+            return asyncio.create_task(self.aplay_all(pklsegs, slider))
         else:
             btn.description = 'PlayAll'
             return
@@ -195,7 +239,7 @@ class DebugUI:
         details = widgets.Label(value=f'')
 
         def fn_slider(idx):
-            self.is_playall = False
+            # self.is_playall = False
             pklseg = pklsegs[idx]
             details.value = f"{pklseg}"
 
@@ -203,10 +247,6 @@ class DebugUI:
             dur = round(pklseg.end_sec - pklseg.start_sec,1)
             self.player.play(pklseg.start_sec, pklseg.end_sec)
             self.player.draw_text(f"{pklseg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
-
-        replay_btn = widgets.Button(description='Replay', )
-        playall_btn = widgets.Button(description='PlayAll', )
-        playall_btn.on_click(lambda btn: self.on_play_all(btn, pklsegs))
 
         title = widgets.Label(value=f'> {label}: {count= }',
                             style={'background': 'green', 'text_color': 'white'},
@@ -219,7 +259,12 @@ class DebugUI:
             style={'description_width': 'initial'},
             )
         slider.observe(lambda x: fn_slider(x['new']), names='value', type='change')
+
+        replay_btn = widgets.Button(description='Replay', )
+        playall_btn = widgets.Button(description='PlayAll', )
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
+        playall_btn.on_click(lambda btn: self.on_play_all(btn, pklsegs, slider))
+        if ui: fn_slider(0) # play initial
 
         vbox = widgets.VBox([title, details, slider, widgets.HBox([replay_btn, playall_btn])])
         if ui == None:

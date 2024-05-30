@@ -5,6 +5,7 @@ import pickle
 from dataclasses import dataclass, asdict
 from jjutils.audio_utils import hhmmss_to_seconds
 from jjutils.audio_utils import to_hhmmss
+from pathlib import Path
 
 #%% - data structure
 @dataclass
@@ -27,6 +28,19 @@ class PklSegment:
             f"  {to_hhmmss(self.start_sec)} ~ {to_hhmmss(self.end_sec)}"
         )
 
+
+def cha_to_rttm(cha_file):
+    with open(cha_file) as fp:
+        cha_text = fp.read()
+
+    name = Path(cha_file).stem
+    speakers = re.findall(r'^\*([^:]+):.+?(\d+)_(\d+)', cha_text, re.MULTILINE)
+    with open(cha_file.replace('.cha', '.rttm'), 'w') as fp:
+        for speaker_tag, start_ms, end_ms in speakers:
+            start_sec = float(start_ms)/1000
+            dur_sec = (float(end_ms) - float(start_ms)) / 1000
+            rttm_line = f"SPEAKER {name} 1 {start_sec:.2f} {dur_sec:.2f} <NA> <NA> {speaker_tag} <NA> <NA>\n"
+            fp.write(rttm_line)
 
 #%% - segments fine tuning
 
@@ -162,6 +176,7 @@ def remove_short_voice(pklsegs:list[PklSegment], SHORT_THRESHOLD = 0.7, debug=Fa
 
 #%% - format conversion
 
+
 # list[PklSegment] to Annotation.
 def pklsegments_to_annotation(pklsegs:list[PklSegment]) -> object:
     from pyannote.core import Annotation, Segment
@@ -170,19 +185,10 @@ def pklsegments_to_annotation(pklsegs:list[PklSegment]) -> object:
         anno[Segment(seg.start_sec, seg.end_sec)] = seg.speaker_tag
     return anno
 
-def load_rttm(rttm_path) -> object:
-    from pyannote.core import Annotation, Segment
-    annotation = Annotation()
-    with open(rttm_path, 'r') as file:
-        for line in file:
-            parts = line.strip().split()
-
-            start = float(parts[3])
-            end = start + float(parts[4])
-            segment = Segment(start, end)
-            speaker = parts[7]
-            annotation[segment] = speaker
-    return annotation
+# def load_rttm(rttm_path) -> object:
+#     from pyannote.database.util import load_rttm
+#     _, anno = load_rttm(rttm_path).popitem()
+#     return anno
 
 def get_inter_pklsegments(segments: list[PklSegment]):
     intersegments = []
@@ -195,8 +201,12 @@ def get_inter_pklsegments(segments: list[PklSegment]):
 
 import hashlib
 def annotation_to_pklsegments(annotation:object, interseg = False):
+    from pyannote.database.util import load_rttm
     from pyannote.core import Annotation, Segment
     annotation:Annotation
+
+    if isinstance(annotation, str):
+        _, annotation = load_rttm(annotation).popitem()
 
     def get_speaker_tag(tag):
         try:
@@ -257,7 +267,19 @@ def srt_to_pklsegments(srt_path):
         pklsegs.append(PklSegment(hhmmss_to_seconds(s), hhmmss_to_seconds(e), int(tag)))
     return pklsegs
 
+#%%
+def write_rttm(segs:object, rttm_path:str):
+    from pyannote.core import Annotation, Segment
+    if isinstance(segs, list):
+        anno = pklsegments_to_annotation(segs)
+        anno.uri = Path(rttm_path).stem
+    elif isinstance(segs, Annotation):
+        anno = segs
+    else:
+        assert False, f"Invalid segs: {type(segs)}"
 
+    with open(rttm_path, 'w') as fp:
+        anno.write_rttm(fp)
 
 def pklsegments_to_m3u(pklsegs:list[PklSegment], m3ufile:str, mp4file:str, speaker_map = dict()):
     return build_m3u(pklsegs, m3ufile, mp4file, speaker_map)
