@@ -15,8 +15,8 @@ class PklSegment:
     speaker_tag: str|int = None
 
     def __post_init__(self):
-        self.start_sec = round(self.start_sec, 1)
-        self.end_sec = round(self.end_sec, 1)
+        self.start_sec = round(self.start_sec, 3)
+        self.end_sec = round(self.end_sec, 3)
 
     def copy(self):
         return PklSegment(self.start_sec, self.end_sec, self.speaker_tag)
