@@ -8,10 +8,9 @@ if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
 from pathlib import Path
 from pprint import pprint
-from tqdm import tqdm
 from glob import glob
 import numpy as np; np.set_printoptions(precision=8, suppress=True); np.random.seed(42)
-import pandas as pd
+# import pandas as pd
 # from moviepy.editor import VideoFileClip
 import subprocess
 
@@ -58,85 +57,85 @@ def to_hhmmss(seconds, compact=False):
 
     return f"{hours:02}:{minutes:02}:{seconds:02},{ms}"
 
-def build_m3u( srcfile, mp4file, m3ufile ):
-    if srcfile.endswith('.tag'):
-        diar = pd.read_csv(srcfile, delimiter='\t')
-        # diar = diar.sort_values(by='ssec')
+# def build_m3u( srcfile, mp4file, m3ufile ):
+#     if srcfile.endswith('.tag'):
+#         diar = pd.read_csv(srcfile, delimiter='\t')
+#         # diar = diar.sort_values(by='ssec')
 
-        _esec = 0
-        with open(m3ufile, 'w') as fp:
-            fp.write('#EXTM3U\n')
-            for i, seg in diar.iterrows():
-                ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
-                duration = esec - ssec
-                empty = ssec - _esec
-                if empty>= 0.5:
-                    fp.write(
-                        f'#EXTINF:{int(empty)}, speaker_empty - duration={empty:.1f}\n'
-                        f'#EXTVLCOPT:start-time={_esec}\n'
-                        f'#EXTVLCOPT:stop-time={ssec}\n'
-                        f'{mp4file}\n'
-                    )
+#         _esec = 0
+#         with open(m3ufile, 'w') as fp:
+#             fp.write('#EXTM3U\n')
+#             for i, seg in diar.iterrows():
+#                 ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
+#                 duration = esec - ssec
+#                 empty = ssec - _esec
+#                 if empty>= 0.5:
+#                     fp.write(
+#                         f'#EXTINF:{int(empty)}, speaker_empty - duration={empty:.1f}\n'
+#                         f'#EXTVLCOPT:start-time={_esec}\n'
+#                         f'#EXTVLCOPT:stop-time={ssec}\n'
+#                         f'{mp4file}\n'
+#                     )
 
-                fp.write(
-                    f'#EXTINF:{int(duration)}, speaker_{tag} - duration={duration:.1f}\n'
-                    f'#EXTVLCOPT:start-time={ssec}\n'
-                    f'#EXTVLCOPT:stop-time={esec}\n'
-                    f'{mp4file}\n'
-                    #vlc://pause:1
-                )
-                _esec = esec
+#                 fp.write(
+#                     f'#EXTINF:{int(duration)}, speaker_{tag} - duration={duration:.1f}\n'
+#                     f'#EXTVLCOPT:start-time={ssec}\n'
+#                     f'#EXTVLCOPT:stop-time={esec}\n'
+#                     f'{mp4file}\n'
+#                     #vlc://pause:1
+#                 )
+#                 _esec = esec
 
-    elif srcfile.endswith('.srt'):
-        with open(srcfile) as fp: srt = fp.read()
-        matches = re.findall(r"([\d:,]+) --> ([\d:,]+)\n([^\n]+)", srt, re.M)
-        with open(m3ufile, 'w') as fp:
-            fp.write('#EXTM3U\n')
-            for m in matches:
-                ssec, esec, text = m
-                fp.write(
-                    f'#EXTINF:-1, {text[:20]}\n'
-                    f'#EXTVLCOPT:start-time={time_to_seconds(ssec)}\n'
-                    f'#EXTVLCOPT:stop-time={time_to_seconds(esec)}\n'
-                    f'{mp4file}\n'
-                    #vlc://pause:1
-                    )
-    else:
-        raise ValueError("invalid srcfile:"+srcfile)
-    return m3ufile
+#     elif srcfile.endswith('.srt'):
+#         with open(srcfile) as fp: srt = fp.read()
+#         matches = re.findall(r"([\d:,]+) --> ([\d:,]+)\n([^\n]+)", srt, re.M)
+#         with open(m3ufile, 'w') as fp:
+#             fp.write('#EXTM3U\n')
+#             for m in matches:
+#                 ssec, esec, text = m
+#                 fp.write(
+#                     f'#EXTINF:-1, {text[:20]}\n'
+#                     f'#EXTVLCOPT:start-time={time_to_seconds(ssec)}\n'
+#                     f'#EXTVLCOPT:stop-time={time_to_seconds(esec)}\n'
+#                     f'{mp4file}\n'
+#                     #vlc://pause:1
+#                     )
+#     else:
+#         raise ValueError("invalid srcfile:"+srcfile)
+#     return m3ufile
 
-def build_srt(tagfile, srtfile):
-    diar = pd.read_csv(tagfile, delimiter='\t')
+# def build_srt(tagfile, srtfile):
+#     diar = pd.read_csv(tagfile, delimiter='\t')
 
-    with open(srtfile, 'w') as fp:
-        n_subscription = 0
-        _esec = 0
-        for _, seg in diar.iterrows():
-            ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
-            empty = ssec - _esec
-            if empty>= 0.5:
-                n_subscription += 1
-                fp.write(
-                    f"{n_subscription}\n"
-                    f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
-                    f"Speaker empty - duration={empty:.1f} sec\n\n"
-                    )
+#     with open(srtfile, 'w') as fp:
+#         n_subscription = 0
+#         _esec = 0
+#         for _, seg in diar.iterrows():
+#             ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
+#             empty = ssec - _esec
+#             if empty>= 0.5:
+#                 n_subscription += 1
+#                 fp.write(
+#                     f"{n_subscription}\n"
+#                     f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
+#                     f"Speaker empty - duration={empty:.1f} sec\n\n"
+#                     )
 
-            n_subscription += 1
-            fp.write(
-                f"{n_subscription}\n"
-                f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
-                f"Speaker {tag} - duration={esec-ssec:.1f} sec\n\n"
-                )
-            _esec = esec
-    return srtfile
+#             n_subscription += 1
+#             fp.write(
+#                 f"{n_subscription}\n"
+#                 f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
+#                 f"Speaker {tag} - duration={esec-ssec:.1f} sec\n\n"
+#                 )
+#             _esec = esec
+#     return srtfile
 
 
-if __name__ == '__main__':
-    tagfile = 'dataset/jp.Meeting-10min.mp3-pyannote.tag'
-    mp4file = 'dataset/jp.Meeting.mp4'
-    m3ufile = 'jp.Meeting-10min-pyannote.m3u'
-    build_m3u(tagfile, mp4file, m3ufile)
+# if __name__ == '__main__':
+#     tagfile = 'dataset/jp.Meeting-10min.mp3-pyannote.tag'
+#     mp4file = 'dataset/jp.Meeting.mp4'
+#     m3ufile = 'jp.Meeting-10min-pyannote.m3u'
+#     build_m3u(tagfile, mp4file, m3ufile)
 
 # %%
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
@@ -211,7 +210,7 @@ def get_segment(from_srt:Path):
 if __name__ == '__main__':
     get_segment('dataset/ntt.meeting.srt')
 # %%
-from pydub import AudioSegment, generators
+from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
 def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.0, start_end_notifier = False):
@@ -321,3 +320,6 @@ def play_segment(segment:AudioSegment, speed:float=1.0):
     play_obj = wave_obj.play()
     return play_obj
 
+# trim audio with ffmpeg
+#    ffmpeg -i dataset/jp.zoom-4person.mp4 -ss 00:01:00 -t 00:30:00 -c copy dataset/jp.zoom-4person-trimmed.mp4
+#    ffmpeg -i dataset/jp.zoom-4person.mp4 -ss 00:31:00  -c copy dataset/jp.zoom-4person-trimmed2.mp4

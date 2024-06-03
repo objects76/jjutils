@@ -1,7 +1,5 @@
-
-# !pip install python-vlc
 import asyncio, os
-import vlc
+import vlc # !pip install python-vlc
 import gc
 
 class VlcPlayer:

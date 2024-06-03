@@ -336,3 +336,37 @@ def segments_to_pickle(segments:list[PklSegment], pickle_file:str):
     with open(pickle_file, 'wb') as fp:
         pickle.dump([asdict(seg) for seg in segments], fp)
 
+
+
+#
+# DER
+#
+def _plot_anno(diar, title=None):
+    from pyannote.core.notebook import notebook
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(20, 2))
+    notebook.plot_annotation(diar, legend=True)
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Speakers')
+    if title:
+        plt.title(title, loc='right')
+        plt.savefig(title+'.png')
+    plt.show()
+
+def get_der(rttm_pred, rttm_gt, plot=False):
+    from pyannote.database.util import load_rttm
+    from pyannote.metrics.diarization import DiarizationErrorRate
+    if not Path(rttm_gt).exists(): return -1
+
+    _, prediction = load_rttm(rttm_pred).popitem()
+    _, groundtruth = load_rttm(rttm_gt).popitem()
+
+    metric = DiarizationErrorRate()
+    der = metric(groundtruth, prediction) * 100
+
+    if plot:
+        mapping = metric.optimal_mapping(groundtruth, prediction)
+        _plot_anno(prediction.rename_labels(mapping=mapping), f"{Path(rttm_pred).stem}, {der= :.1f}%")
+        _plot_anno(groundtruth, 'groundtruth')
+
+    return der
