@@ -55,35 +55,6 @@ class VlcPlayer:
         self.instance = self.vlcp = None
         gc.collect()
 
-    async def _aplay(self, start_sec:float, end_sec:float):
-        # print(f'play: {start_sec:.1f} ~ {end_sec:.1f}')
-        self.vlcp.play()
-
-        while self.vlcp.get_state() != vlc.State.Playing:
-            await asyncio.sleep(0.1)
-
-        self.vlcp.set_time(int(start_sec * 1000))
-        self.end_ms = int(end_sec * 1000)
-
-        while self.stop_play == False:
-            remained = self.end_ms - self.vlcp.get_time()
-            if remained <= 0: break
-            self.vlcp.video_set_marquee_string(vlc.VideoMarqueeOption.Text,
-                                                 self.text + f'\n: {int(remained/1000)} sec remained')
-            await asyncio.sleep(0.1)
-
-
-        self.vlcp.pause()
-        self.async_play_task = None
-
-    async def aplay_old(self, start_sec:float, end_sec:float):
-        if self.async_play_task and not self.async_play_task.done():
-            self.stop_play = True
-            await self.async_play_task
-
-        self.stop_play = False
-        self.async_play_task = asyncio.create_task(self._aplay(start_sec, end_sec))
-
     def play(self, start_sec:float, end_sec:float):
         asyncio.create_task(self.aplay(start_sec, end_sec))
 
