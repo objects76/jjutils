@@ -209,13 +209,11 @@ def get_segment(from_srt:Path):
 
 if __name__ == '__main__':
     get_segment('dataset/ntt.meeting.srt')
-
 # %%
+from pydub import AudioSegment, generators # pip install pydub
+import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
 def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.0, start_end_notifier = False):
-    from pydub import AudioSegment, generators
-    import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
-
     # Load the full audio file
     assert file_path.endswith('.wav') or file_path.endswith('.mp3')
     audio = AudioSegment.from_file(file_path)
@@ -268,26 +266,16 @@ def get_audio_info(file_path):
     # Convert output from JSON string to Python dictionary
     try:
         info = json.loads(result.stdout)
-
-        audio_info = {
-            "file": file_path,
-            "channels": info['streams'][0]['channels'],
-            "bit_rate": int(info['streams'][0]['bit_rate']),
-            "sample_rate": int(info['streams'][0]['sample_rate']),
-            "duration": float(info['format']['duration']),
-            "hhmmss": to_hhmmss(float(info['format']['duration']))
-        }
-        return audio_info
+        return info
     except (KeyError, json.JSONDecodeError) as e:
         print("Error parsing information:", e)
         return None
 
 #%%
-from pydub import AudioSegment, generators # !pip install pydub
+from pydub import AudioSegment, generators
+import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
 def get_audio_segments(file_path: Path, *, pklsegs: list, start_end_notifier = True) -> list[AudioSegment]:
-    import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
-
     # Load the full audio file
     assert file_path.suffix == '.wav' or file_path.suffix == '.mp3'
     audio = AudioSegment.from_file(file_path)

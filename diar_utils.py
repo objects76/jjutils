@@ -174,6 +174,27 @@ def remove_short_voice(pklsegs:list[PklSegment], SHORT_THRESHOLD = 0.7, debug=Fa
 
 
 
+from pyannote.core import Annotation, Segment
+
+def add_inter_segments(annotation:Annotation, *, pad_before=0., pad_after=0.):
+
+    end_of_old_segment = 0.
+    new_annotation:Annotation = Annotation(uri=annotation.uri, modality=annotation.modality)
+    for segment, track, label in annotation.itertracks(yield_label=True):
+        # print(segment, track, label)
+        if end_of_old_segment < segment.start:
+            inter_segment = Segment(end_of_old_segment - pad_before, segment.start + pad_after)
+            if inter_segment.duration > 0:
+                new_annotation[inter_segment, '_'] = 'INTER'
+                segment = Segment(segment.start + pad_after, segment.end - pad_before)
+            if segment.duration <= 0:
+                print('segment is removed by padding:', segment)
+
+        new_annotation[segment, track] = label
+        end_of_old_segment = segment.end
+
+    return new_annotation
+
 #%% - format conversion
 
 
@@ -201,22 +222,11 @@ def get_inter_pklsegments(segments: list[PklSegment]):
 
 import hashlib
 def annotation_to_pklsegments(annotation:object, interseg = False):
-    from pyannote.database.util import load_rttm
-    from pyannote.core import Annotation, Segment
+    from pyannote.core import Annotation
     annotation:Annotation
 
-    if isinstance(annotation, str):
-        _, annotation = load_rttm(annotation).popitem()
-
-    def get_speaker_tag(tag):
-        try:
-            return int(tag[8:])
-        except:
-            return str(tag)
-            return int(hashlib.md5(tag.encode('utf-8')).hexdigest()[:8], 16)
-
     segments = [
-        PklSegment( turn.start, turn.end, get_speaker_tag(speaker))
+        PklSegment( turn.start, turn.end, str(speaker))
         for turn, _, speaker in annotation.itertracks(yield_label=True)
     ]
 
@@ -345,18 +355,20 @@ def _plot_anno(diar, title=None):
     from pyannote.core.notebook import notebook
     import matplotlib.pyplot as plt
     plt.figure(figsize=(20, 2))
-    notebook.plot_annotation(diar, legend=True)
+    notebook.plot_annotation(diar)
     plt.xlabel('Time (seconds)')
     plt.ylabel('Speakers')
     if title:
         plt.title(title, loc='right')
-        plt.savefig(title+'.png')
+        # plt.savefig(title+'.png')
     plt.show()
 
 def get_der(rttm_pred, rttm_gt, plot=False):
     from pyannote.database.util import load_rttm
     from pyannote.metrics.diarization import DiarizationErrorRate
-    if not Path(rttm_gt).exists(): return -1
+    if not Path(rttm_gt).exists():
+        print('No gt:', rttm_gt)
+        return -1
 
     _, prediction = load_rttm(rttm_pred).popitem()
     _, groundtruth = load_rttm(rttm_gt).popitem()
