@@ -174,8 +174,11 @@ def remove_short_voice(pklsegs:list[PklSegment], SHORT_THRESHOLD = 0.7, debug=Fa
 
 
 
+#%% - format conversion
+
 from pyannote.core import Annotation, Segment
 
+# add inter segments for debug.
 def add_inter_segments(annotation:Annotation, *, pad_before=0., pad_after=0.):
 
     end_of_old_segment = 0.
@@ -193,6 +196,16 @@ def add_inter_segments(annotation:Annotation, *, pad_before=0., pad_after=0.):
         new_annotation[segment, track] = label
         end_of_old_segment = segment.end
 
+    return new_annotation
+
+
+# remove the speaker has all segments are short (less than 1sec)
+def remove_garbage_segments(annotation: Annotation, short_threshold: float = 1.0):
+    new_annotation:Annotation = Annotation(uri=annotation.uri, modality=annotation.modality)
+    for segment, track, label in annotation.itertracks(yield_label=True):
+        if segment.duration < short_threshold:
+            continue
+        new_annotation[segment, track] = label
     return new_annotation
 
 #%% - format conversion

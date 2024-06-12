@@ -5,8 +5,8 @@ import os
 from .diar_utils import to_hhmmss
 
 
-import simpleaudio as sa
-import subprocess, torch, numpy as np
+import simpleaudio
+import subprocess, numpy as np
 
 class AudioChunk: # for more fine-controlling(ms).
     def __init__(self, mp4path) -> None:
@@ -17,11 +17,12 @@ class AudioChunk: # for more fine-controlling(ms).
     def play(self, start_sec, end_sec):
         self.stop()
 
+        assert start_sec < end_sec
         sample_start = int(start_sec * 16_000)
         sample_end = int(end_sec * 16_000)
         wave_clip = self.wave_bytes[sample_start*2:sample_end*2]
 
-        self.play_obj = sa.play_buffer(wave_clip, 1, 2, 16_000)
+        self.play_obj = simpleaudio.play_buffer(wave_clip, 1, 2, 16_000)
 
     def stop(self):
         if self.play_obj:
@@ -38,6 +39,9 @@ class AudioChunk: # for more fine-controlling(ms).
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
 
+#
+#
+#
 class VlcPlayer:
     def __init__(self, width = 1920*2, height = 1080*2):
         os.environ["VLC_VERBOSE"] = str("-1")
@@ -84,10 +88,6 @@ class VlcPlayer:
         self.stop_play = True
         self.vlcp.stop()
         self.audio.stop()
-        # if self.async_play_task:
-        #     del self.async_play_task
-            # self.stop_play = True
-            # while self.async_play_task != None: time.sleep(0.1)
 
         del self.vlcp
         del self.instance
@@ -121,16 +121,15 @@ class VlcPlayer:
             self.stop_play = False
 
             for start_sec, end_sec, sec_type in ranges:
+                if self.stop_play: break
                 self.vlcp.set_time(int(start_sec * 1000))
                 self.end_ms = int(end_sec * 1000)
                 self.audio.play(start_sec, end_sec)
 
-                while self.stop_play == False:
-                    remained = self.remained_ms()
-                    if remained <= 0: break
+                while self.stop_play == False and self.audio.play_obj.is_playing():
                     self.vlcp.video_set_marquee_string(
                         vlc.VideoMarqueeOption.Text,
-                        self.text + f'\n: {sec_type}{int(remained/1000)} sec remained')
+                        self.text + f'\n: {sec_type}{int(self.remained_ms()/1000)} sec remained')
                     await asyncio.sleep(0.3) # update text.
                 self.audio.stop()
             # for
@@ -190,13 +189,13 @@ from pyannote.core import Annotation, Segment
 from collections import namedtuple
 
 Speaker = namedtuple('Speaker', ['start_sec', 'end_sec', 'speaker_tag'])
-class DebugUI:
+class DebugDiarUI:
     _player = None
     def __init__(self, video_path = None) -> None:
-        if DebugUI._player:
-            DebugUI._player.clear()
+        if DebugDiarUI._player:
+            DebugDiarUI._player.clear()
 
-        self.player = DebugUI._player = VlcPlayer()
+        self.player = DebugDiarUI._player = VlcPlayer()
         if video_path:
             self.set_videofile(video_path)
 
