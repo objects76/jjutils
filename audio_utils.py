@@ -20,7 +20,7 @@ import subprocess
 #         return video.duration  # duration is in seconds
 
 # if __name__ == '__main__':
-#     mp4file = 'dataset/jp.Meeting.mp4'
+#     mp4file = 'testdata/jp.Meeting.mp4'
 #     duration = get_video_duration(mp4file)
 #     print(f"The video duration is {duration} seconds.")
 
@@ -132,8 +132,8 @@ def to_hhmmss(seconds, compact=False):
 
 
 # if __name__ == '__main__':
-#     tagfile = 'dataset/jp.Meeting-10min.mp3-pyannote.tag'
-#     mp4file = 'dataset/jp.Meeting.mp4'
+#     tagfile = 'testdata/jp.Meeting-10min.mp3-pyannote.tag'
+#     mp4file = 'testdata/jp.Meeting.mp4'
 #     m3ufile = 'jp.Meeting-10min-pyannote.m3u'
 #     build_m3u(tagfile, mp4file, m3ufile)
 
@@ -141,7 +141,7 @@ def to_hhmmss(seconds, compact=False):
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 
 # import pydub
-# sound = pydub.AudioSegment.from_file('dataset/jp.20240319.mp4').set_channels(1)
+# sound = pydub.AudioSegment.from_file('testdata/jp.20240319.mp4').set_channels(1)
 # sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
 
 def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
@@ -165,7 +165,7 @@ def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_ty
         Path(outdir).mkdir(exist_ok=1)
         if audio_type == 'wav':
             # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
-            # !ffmpeg -i dataset/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 dataset/ntt.meeting_16k.wav
+            # !ffmpeg -i testdata/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 testdata/ntt.meeting_16k.wav
             ac = '-ac 1'
             ar = '-ar 16000'
             if ssec == 0 and esec == 0:
@@ -191,7 +191,7 @@ def replace_mp4_audio(mp4file, audioin, mp4output):
 
 
 if __name__ == '__main__':
-    mp4file = 'dataset/ntt.meeting.mp4'
+    mp4file = 'testdata/ntt.meeting.mp4'
     get_audio(mp4file, 720, 1500, 'wav')
 
 
@@ -208,7 +208,7 @@ def get_segment(from_srt:Path):
                 fp.write(f"{s}\t{e}\t{t}\n")
 
 if __name__ == '__main__':
-    get_segment('dataset/ntt.meeting.srt')
+    get_segment('testdata/ntt.meeting.srt')
 # %%
 from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
@@ -312,5 +312,5 @@ def play_segment(segment:AudioSegment, speed:float=1.0):
     return play_obj
 
 # trim audio with ffmpeg
-#    ffmpeg -i dataset/jp.zoom-4person.mp4 -ss 00:01:00 -t 00:30:00 -c copy dataset/jp.zoom-4person-trimmed.mp4
-#    ffmpeg -i dataset/jp.zoom-4person.mp4 -ss 00:31:00  -c copy dataset/jp.zoom-4person-trimmed2.mp4
+#    ffmpeg -i testdata/jp.zoom-4person.mp4 -ss 00:01:00 -t 00:30:00 -c copy testdata/jp.zoom-4person-trimmed.mp4
+#    ffmpeg -i testdata/jp.zoom-4person.mp4 -ss 00:31:00  -c copy testdata/jp.zoom-4person-trimmed2.mp4
