@@ -7,20 +7,25 @@ from .diar_utils import to_hhmmss
 
 import simpleaudio
 import subprocess, numpy as np
+import pydub
 
 class AudioChunk: # for more fine-controlling(ms).
     def __init__(self, mp4path) -> None:
         self.wave_bytes = AudioChunk.load_audio(mp4path).tobytes()
         self.play_obj = None
+
+        self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-30).raw_data
         pass
 
-    def play(self, start_sec, end_sec):
+    def play(self, start_sec, end_sec, use_beep = True):
         self.stop()
 
         assert start_sec < end_sec
         sample_start = int(start_sec * 16_000)
         sample_end = int(end_sec * 16_000)
         wave_clip = self.wave_bytes[sample_start*2:sample_end*2]
+        if use_beep:
+            wave_clip += self.beep
 
         self.play_obj = simpleaudio.play_buffer(wave_clip, 1, 2, 16_000)
 
@@ -28,6 +33,9 @@ class AudioChunk: # for more fine-controlling(ms).
         if self.play_obj:
             self.play_obj.stop()
             self.play_obj = None
+
+    def forward(self, sec:float):
+        ...
 
     @staticmethod
     def load_audio(media_input: str, *, sr: int = 16000):
@@ -38,6 +46,80 @@ class AudioChunk: # for more fine-controlling(ms).
             return np.frombuffer(out, np.int16).flatten()
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
+
+import pyaudio
+FRAME_1ms = 16
+class PyAudioPlayer:
+    inst = None
+
+    def __init__(self, filename) -> None:
+        self.curtime = 0
+
+        self.p = pyaudio.PyAudio()
+
+        self.stream = self.p.open(
+            format= self.p.get_format_from_width(2),
+            channels=1,
+            rate= FRAME_1ms*1000,
+            start=False,
+            frames_per_buffer = FRAME_1ms*5,
+            output=True, input=False,
+            stream_callback= lambda *args: self.callback(*args))
+
+        self.waves = PyAudioPlayer.load_audio(filename)
+        self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
+        PyAudioPlayer.inst = self
+
+        pass
+
+    def __del__(self): self.close()
+
+    def close(self):
+        self.stream.close()
+        self.p.terminate()
+        PyAudioPlayer.inst = None
+
+    def callback(self, in_data, frame_count, time_info, status):
+
+        end_frame = self.cur_frame+frame_count
+        data = self.wave_chunk[self.cur_frame*2:end_frame*2]
+        self.cur_frame += frame_count
+        return (data, pyaudio.paContinue)
+
+    def play(self, start_sec, end_sec, use_beep=True):
+        # print(f"play: {start_sec}~{end_sec}")
+        cur_frame = int(FRAME_1ms * 1000 * start_sec)
+        end_frame = int(FRAME_1ms * 1000 * end_sec)
+
+        self.wave_chunk = self.waves[cur_frame*2: end_frame*2]
+        if use_beep:
+            self.wave_chunk += self.beep
+
+        self.cur_frame = 0
+
+        self.stream.stop_stream()
+        self.stream.start_stream()
+
+    def stop(self):
+        self.stream.stop_stream()
+
+    # def get_time(self):
+    #     return self.start_sec + (self.cur_frame / FRAME_1ms / 1000.)
+
+    def forward(self, sec:float):
+        self.cur_frame += int(FRAME_1ms * 1000 * sec)
+
+    @staticmethod
+    def load_audio(media_input: str, *, sr: int = 16000):
+        FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+        try:
+            cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
+            out = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
+            return np.frombuffer(out, np.int16).flatten().tobytes()
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
 
 #
 #
@@ -65,6 +147,7 @@ class VlcPlayer:
 
         self.vlcp.audio_set_mute(True)
         self.audio = AudioChunk(mp4path)
+        # self.audio = PyAudioPlayer(mp4path)
 
         media.parse()
         width,height = self.vlcp.video_get_size()
@@ -113,6 +196,7 @@ class VlcPlayer:
                 ranges = [(start_sec, start_sec+3, 's.'), (end_sec-3, end_sec, 'e.')]
             else:
                 ranges = [(start_sec, end_sec, '')]
+            # beep-end notifier
 
             # wait playing...
             self.vlcp.play()
@@ -124,7 +208,7 @@ class VlcPlayer:
                 if self.stop_play: break
                 self.vlcp.set_time(int(start_sec * 1000))
                 self.end_ms = int(end_sec * 1000)
-                self.audio.play(start_sec, end_sec)
+                self.audio.play(start_sec, end_sec, use_beep= sec_type != 's.')
 
                 while self.stop_play == False and self.audio.play_obj.is_playing():
                     self.vlcp.video_set_marquee_string(
@@ -147,10 +231,11 @@ class VlcPlayer:
     def remained_ms(self):
         return self.end_ms - self.vlcp.get_time()
 
-    def forward(self, ms=1000):
+    def forward(self, sec:float):
         if self.vlcp.get_state() == vlc.State.Playing:
             curpos = self.vlcp.get_time()
-            self.vlcp.set_time(curpos + ms)
+            self.vlcp.set_time(curpos + sec*1000)
+            self.audio.forward(sec)
 
     def _draw_text(self, text, *, clr_argb):
         player = self.vlcp
@@ -248,14 +333,14 @@ class DebugDiarUI:
 
         btn_ff5 = widgets.Button(description='+ 5sec')
         btn_ff10 = widgets.Button(description='+ 10sec')
-        btn_ff5.on_click(lambda b: (self.player.forward(5_000)))
-        btn_ff10.on_click(lambda b: (self.player.forward(10_000)))
+        btn_ff5.on_click(lambda b: (self.player.forward(5)))
+        btn_ff10.on_click(lambda b: (self.player.forward(10)))
         display(widgets.HBox([btn_ff5, btn_ff10]))
 
         # self._interact_video(self.segs_inter, f'diar: inter')
 
         cb_play_boundary = widgets.Checkbox(
-            value=False,
+            value=True,
             description='Play start/end only',
             indent=False
         )

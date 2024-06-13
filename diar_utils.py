@@ -200,12 +200,18 @@ def add_inter_segments(annotation:Annotation, *, pad_before=0., pad_after=0.):
 
 
 # remove the speaker has all segments are short (less than 1sec)
-def remove_garbage_segments(annotation: Annotation, short_threshold: float = 1.0):
+def remove_garbage_speaker(annotation: Annotation, short_threshold: float = 1.0):
     new_annotation:Annotation = Annotation(uri=annotation.uri, modality=annotation.modality)
-    for segment, track, label in annotation.itertracks(yield_label=True):
-        if segment.duration < short_threshold:
-            continue
-        new_annotation[segment, track] = label
+    for speaker in annotation.labels():
+        segments = annotation.label_timeline(speaker)
+        # 모든 세그먼트가 min_duration 미만인지 확인
+        if all(segment.duration < short_threshold for segment in segments):
+            print(f'`{speaker}` is not a speaker?')
+            continue  # 조건에 맞는 화자는 추가하지 않음
+
+        for segment in segments:
+            new_annotation[segment] = speaker
+
     return new_annotation
 
 #%% - format conversion
