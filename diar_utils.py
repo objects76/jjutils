@@ -174,45 +174,6 @@ def remove_short_voice(pklsegs:list[PklSegment], SHORT_THRESHOLD = 0.7, debug=Fa
 
 
 
-#%% - format conversion
-
-from pyannote.core import Annotation, Segment
-
-# add inter segments for debug.
-def add_inter_segments(annotation:Annotation, *, pad_before=0., pad_after=0.):
-
-    end_of_old_segment = 0.
-    new_annotation:Annotation = Annotation(uri=annotation.uri, modality=annotation.modality)
-    for segment, track, label in annotation.itertracks(yield_label=True):
-        # print(segment, track, label)
-        if end_of_old_segment < segment.start:
-            inter_segment = Segment(end_of_old_segment - pad_before, segment.start + pad_after)
-            if inter_segment.duration > 0:
-                new_annotation[inter_segment, '_'] = 'INTER'
-                segment = Segment(segment.start + pad_after, segment.end - pad_before)
-            if segment.duration <= 0:
-                print('segment is removed by padding:', segment)
-
-        new_annotation[segment, track] = label
-        end_of_old_segment = segment.end
-
-    return new_annotation
-
-
-# remove the speaker has all segments are short (less than 1sec)
-def remove_garbage_speaker(annotation: Annotation, short_threshold: float = 1.0):
-    new_annotation:Annotation = Annotation(uri=annotation.uri, modality=annotation.modality)
-    for speaker in annotation.labels():
-        segments = annotation.label_timeline(speaker)
-        # 모든 세그먼트가 min_duration 미만인지 확인
-        if all(segment.duration < short_threshold for segment in segments):
-            print(f'`{speaker}` is not a speaker?')
-            continue  # 조건에 맞는 화자는 추가하지 않음
-
-        for segment in segments:
-            new_annotation[segment] = speaker
-
-    return new_annotation
 
 #%% - format conversion
 

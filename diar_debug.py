@@ -49,6 +49,7 @@ class AudioChunk: # for more fine-controlling(ms).
 
 
 import pyaudio
+
 FRAME_1ms = 16
 class PyAudioPlayer:
     inst = None
@@ -70,8 +71,8 @@ class PyAudioPlayer:
         self.waves = PyAudioPlayer.load_audio(filename)
         self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
         PyAudioPlayer.inst = self
-
         pass
+
 
     def __del__(self): self.close()
 
@@ -129,11 +130,12 @@ class VlcPlayer:
         os.environ["VLC_VERBOSE"] = str("-1")
 
         opts = []
-        opts.extend("--video-on-top --no-sub-autodetect-file".split())
+        opts.extend('--video-on-top --no-sub-autodetect-file --no-audio'.split())
         # opts.extend(f"--video-on-top --width={width} --height={height}".split())
 
         self.instance = vlc.Instance(opts)
         self.vlcp: vlc.MediaPlayer = self.instance.media_player_new()
+
         # self.player.video_set_scale(3)
         self.stop_play = True
         self.async_play_task = None
@@ -141,11 +143,12 @@ class VlcPlayer:
         self.n_played = 0
         self.play_boundary = False
 
+
     def set_file(self, mp4path):
         media = self.instance.media_new(mp4path)
         self.vlcp.set_media(media)
 
-        self.vlcp.audio_set_mute(True)
+        # self.vlcp.audio_set_mute(True)
         self.audio = AudioChunk(mp4path)
         # self.audio = PyAudioPlayer(mp4path)
 
@@ -192,7 +195,7 @@ class VlcPlayer:
                 await asyncio.sleep(0.1)
 
             duration = end_sec - start_sec
-            if duration - 3*2 > 3 and self.play_boundary:
+            if duration > 3*2*1.2 and self.play_boundary:
                 ranges = [(start_sec, start_sec+3, 's.'), (end_sec-3, end_sec, 'e.')]
             else:
                 ranges = [(start_sec, end_sec, '')]
@@ -217,6 +220,7 @@ class VlcPlayer:
                     await asyncio.sleep(0.3) # update text.
                 self.audio.stop()
             # for
+
         except AttributeError:
             pass
 
@@ -339,8 +343,9 @@ class DebugDiarUI:
 
         # self._interact_video(self.segs_inter, f'diar: inter')
 
+        self.player.play_boundary = True
         cb_play_boundary = widgets.Checkbox(
-            value=True,
+            value= self.player.play_boundary,
             description='Play start/end only',
             indent=False
         )
