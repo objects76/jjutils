@@ -1,7 +1,7 @@
 import asyncio, os
 import vlc # !pip install python-vlc, https://www.olivieraubert.net/vlc/python-ctypes/doc/
 import gc, time
-import os
+import re
 from .diar_utils import to_hhmmss
 
 
@@ -70,6 +70,7 @@ class PyAudioPlayer:
 
         self.waves = PyAudioPlayer.load_audio(filename)
         self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
+        self.end_ms = 0
         PyAudioPlayer.inst = self
         pass
 
@@ -142,6 +143,9 @@ class VlcPlayer:
         self.text = ''
         self.n_played = 0
         self.play_boundary = False
+        self.play_to_end = False
+        self.play_started = []
+        self.play_done = []
 
 
     def set_file(self, mp4path):
@@ -184,7 +188,6 @@ class VlcPlayer:
     def play(self, start_sec:float, end_sec:float):
         asyncio.create_task(self.aplay(start_sec, end_sec))
 
-
     async def aplay(self, start_sec:float, end_sec:float):
 
         self.n_played += 1
@@ -194,9 +197,12 @@ class VlcPlayer:
                 self.stop_play = True
                 await asyncio.sleep(0.1)
 
+            if self.play_to_end:
+                end_sec = 99999
+
             duration = end_sec - start_sec
-            if duration > 3*2*1.2 and self.play_boundary:
-                ranges = [(start_sec, start_sec+3, 's.'), (end_sec-3, end_sec, 'e.')]
+            if duration > 8*1.2 and self.play_boundary and not self.play_to_end:
+                ranges = [(start_sec, start_sec+4, 's.'), (end_sec-3, end_sec, 'e.')]
             else:
                 ranges = [(start_sec, end_sec, '')]
             # beep-end notifier
@@ -207,19 +213,26 @@ class VlcPlayer:
                 await asyncio.sleep(0.1)
             self.stop_play = False
 
-            for start_sec, end_sec, sec_type in ranges:
+            if len(self.play_started) > 5: self.play_started.pop(0)
+            self.play_started.append(start_sec)
+
+            for ssec, esec, sec_type in ranges:
                 if self.stop_play: break
-                self.vlcp.set_time(int(start_sec * 1000))
-                self.end_ms = int(end_sec * 1000)
-                self.audio.play(start_sec, end_sec, use_beep= sec_type != 's.')
+                self.vlcp.set_time(int(ssec * 1000))
+                self.end_ms = int(esec * 1000)
+                self.audio.play(ssec, esec, use_beep= sec_type != 's.')
 
                 while self.stop_play == False and self.audio.play_obj.is_playing():
+                    # update text
                     self.vlcp.video_set_marquee_string(
                         vlc.VideoMarqueeOption.Text,
                         self.text + f'\n: {sec_type}{int(self.remained_ms()/1000)} sec remained')
                     await asyncio.sleep(0.3) # update text.
                 self.audio.stop()
             # for
+            if len(self.play_done) > 5: self.play_done.pop(0)
+            self.play_done.append(start_sec)
+
 
         except AttributeError:
             pass
@@ -228,10 +241,16 @@ class VlcPlayer:
             self.vlcp.pause()
         self.n_played -= 1
 
+    def assure_play_started(self, start_sec:float):
+        return start_sec in self.play_started
+
+    def assure_play_done(self, start_sec:float):
+        return start_sec in self.play_done
 
     def is_playing(self):
-        return self.vlcp and self.vlcp.get_state() == vlc.State.Playing # and self.vlcp.get_time() < self.end_ms
-
+        return self.vlcp and self.vlcp.get_state() == vlc.State.Playing
+    # def in_range(self):
+    #     return self.remained_ms() > 0
     def remained_ms(self):
         return self.end_ms - self.vlcp.get_time()
 
@@ -257,17 +276,20 @@ class VlcPlayer:
         0x8D33FF, 0x33FFF5, 0xFF8D33, 0x57FF33, 0xA1FF33,
     ]
     clr_index = 0
-    def draw_text(self, text):
-        self._draw_text(text,
-                       clr_argb=VlcPlayer.clrs[VlcPlayer.clr_index],
-                       )
-        VlcPlayer.clr_index = (VlcPlayer.clr_index+1) % len(VlcPlayer.clrs)
+    def draw_text(self, text, *, clr_index=None):
+        if clr_index is None:
+            clr_index = VlcPlayer.clr_index
+            VlcPlayer.clr_index += 1
+
+        clr_index = clr_index % len(VlcPlayer.clrs)
+        self._draw_text(text, clr_argb=VlcPlayer.clrs[clr_index])
+
 
 
 
 from pathlib import Path
 from pyannote.database.util import load_rttm
-from IPython.display import display
+from IPython.display import display, update_display
 import ipywidgets as widgets
 from functools import singledispatch, singledispatchmethod
 from jjutils.diar_utils import (
@@ -284,9 +306,12 @@ class DebugDiarUI:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
+        self.speaker = None
         self.player = DebugDiarUI._player = VlcPlayer()
         if video_path:
             self.set_videofile(video_path)
+
+        self.prev_end = 0
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
@@ -300,6 +325,7 @@ class DebugDiarUI:
         for turn, _, speaker_tag in anno.itertracks(yield_label=True):
             if turn.end - turn.start > min_sec:
                 self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
+        self.anno = anno
         self._setup_ui()
 
     @set_segment.register
@@ -315,80 +341,38 @@ class DebugDiarUI:
     #     self.rawsegs = [ Speaker(i.start_sec, i.end_sec, i.speaker_tag) for i in rawsegs if i.end_sec - i.start_sec > min_sec]
     #     self._setup_ui()
 
-    def _setup_ui(self):
-        self.roi_widgets = None
-        self.is_playall = False
-
-        lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
-        lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
-        def select_speaker(change):
-            speaker = change['new']
-
-            segs = self.rawsegs if speaker == 'All' else [item for item in self.rawsegs if item.speaker_tag == speaker]
-            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
-            # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
-
-        speakers = set( seg.speaker_tag for seg in self.rawsegs)
-        speakers = ['All', *sorted(speakers)]
-        dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
-        dropdown.observe(select_speaker, names='value')
-        display(widgets.HBox([dropdown, lbl_title]))
-        select_speaker({"new":"All"})
-
-        btn_ff5 = widgets.Button(description='+ 5sec')
-        btn_ff10 = widgets.Button(description='+ 10sec')
-        btn_ff5.on_click(lambda b: (self.player.forward(5)))
-        btn_ff10.on_click(lambda b: (self.player.forward(10)))
-        display(widgets.HBox([btn_ff5, btn_ff10]))
-
-        # self._interact_video(self.segs_inter, f'diar: inter')
-
-        self.player.play_boundary = True
-        cb_play_boundary = widgets.Checkbox(
-            value= self.player.play_boundary,
-            description='Play start/end only',
-            indent=False
-        )
-
-        def on_checkbox_change(change):
-            self.player.play_boundary = change['new']
-        cb_play_boundary.observe(on_checkbox_change, names='value')
-
-        btn_close = widgets.Button(description='Close')
-        btn_close.on_click(lambda b: (self.player.clear()))
-        display(cb_play_boundary, btn_close)
-        pass
-
     async def aplay_all(self, segs, slider:widgets.IntSlider):
         print('0. aplay_all done', self.is_playall)
         try:
             seg = segs[slider.value]
-            dur = round(seg.end_sec - seg.start_sec,1)
-            self.player.play(seg.start_sec, seg.end_sec)
-            self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
-            while not self.player.is_playing(): await asyncio.sleep(0.5)
-            while self.player.is_playing(): await asyncio.sleep(0.5)
+            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+
+            while not self.player.assure_play_started(seg.start_sec):
+                await asyncio.sleep(0.1)
+            # print('wait start', seg.start_sec)
+
+            while not self.player.assure_play_done(seg.start_sec):
+                await asyncio.sleep(0.1)
+            # print('wait done', seg.start_sec)
+
 
             while slider.value < slider.max:
                 slider.value = slider.value + 1
-                while not self.player.is_playing():
-                    await asyncio.sleep(0.5)
+                start_sec = segs[slider.value].start_sec
 
-                while self.player.is_playing():
-                    await asyncio.sleep(0.5)
+                while not self.player.assure_play_started(start_sec):
+                    await asyncio.sleep(0.1)
+                # print('wait start', start_sec)
+
+                while not self.player.assure_play_done(start_sec):
+                    await asyncio.sleep(0.1)
+                # print('wait done', start_sec)
 
                 if not self.is_playall: break
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(1.5) # interval between segments
 
-
-            # for seg in pklsegs:
-            #     if not self.is_playall: break
-            #     dur = round(seg.end_sec - seg.start_sec,1)
-            #     self.player.play(seg.start_sec, seg.end_sec)
-            #     self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec", timeout=int(dur*1000))
-            #     await self.player.aplay(seg.start_sec, seg.end_sec)
-            #     await asyncio.sleep(2)
-        except AttributeError:
+        except AttributeError as ex:
+            print('aplay_all.ex:', ex)
             pass
         print('1. aplay_all done', self.is_playall)
         self.is_playall = False
@@ -402,6 +386,20 @@ class DebugDiarUI:
             btn.description = 'PlayAll'
             return
 
+    def _play(self, tag, start, end):
+        clr_idx = 0
+        if m := re.search(r'\d+', tag):
+            clr_idx = int(m.group()) + 1
+
+        if self.speaker != 'OVERLAPPED' and tag == 'OVERLAPPED':
+            # skipped
+            return
+
+        self.player.play(start, end)
+        self.player.draw_text(f"{tag}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}", clr_index=clr_idx)
+        # if tag != 'INTER':
+        self.prev_end = end
+
     def _interact_video(self, segs, label='', ui=None):
 
         count = len(segs)
@@ -414,9 +412,7 @@ class DebugDiarUI:
             details.value = f"Range= {range}     [{seg.speaker_tag}]"
 
             # if self.vlc: self.vlc.stop()
-            dur = round(seg.end_sec - seg.start_sec,1)
-            self.player.play(seg.start_sec, seg.end_sec)
-            self.player.draw_text(f"{seg.speaker_tag}, {dur:.1f} sec")
+            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
 
         title = widgets.Label(value=f'> {label}: {count= }',
                             style={'background': 'green', 'text_color': 'white'},
@@ -452,6 +448,74 @@ class DebugDiarUI:
 
         ui.children = vbox.children
         return ui
+
+
+    def _setup_ui(self):
+        SPEAKER_ALL = 'AllSpeaker'
+        self.roi_widgets = None
+        self.is_playall = False
+
+        self.speaker == SPEAKER_ALL
+        self.disp_id = str(time.time())
+        display( self.anno, display_id=self.disp_id)
+        # update_display( self.anno , display_id=self.disp_id)
+
+        lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
+        lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
+        def select_speaker(change):
+            speaker = change['new']
+            self.speaker = speaker
+
+            segs = self.rawsegs if speaker == SPEAKER_ALL else [item for item in self.rawsegs if item.speaker_tag == speaker]
+            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
+            # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
+
+            if speaker == SPEAKER_ALL:
+                update_display( self.anno , display_id=self.disp_id)
+            else:
+                update_display( self.anno.label_support(speaker) , display_id=self.disp_id)
+
+        speakers = set( seg.speaker_tag for seg in self.rawsegs)
+        speakers = [SPEAKER_ALL, *sorted(speakers)]
+        dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
+        dropdown.observe(select_speaker, names='value')
+        display(widgets.HBox([dropdown, lbl_title]))
+        select_speaker({"new": SPEAKER_ALL})
+
+        btn_ff5 = widgets.Button(description='+ 5sec')
+        btn_ff10 = widgets.Button(description='+ 10sec')
+        btn_ff5.on_click(lambda b: (self.player.forward(5)))
+        btn_ff10.on_click(lambda b: (self.player.forward(10)))
+        display(widgets.HBox([btn_ff5, btn_ff10]))
+
+        # self._interact_video(self.segs_inter, f'diar: inter')
+
+        self.player.play_boundary = True
+        cb_play_boundary = widgets.Checkbox(
+            value= self.player.play_boundary,
+            description='Play start/end only',
+            indent=False
+        )
+        cb_play_cont = widgets.Checkbox(
+            value= False,
+            description='Play to end',
+            indent=False
+        )
+
+        def on_checkbox_change(change):
+            desc, value = change['owner'].description, change['new']
+            if desc == 'Play to end':
+                self.player.play_to_end = value
+            elif desc == 'Play start/end only':
+                self.player.play_boundary = value
+
+        cb_play_boundary.observe(on_checkbox_change, names='value')
+        cb_play_cont.observe(on_checkbox_change, names='value')
+
+        btn_close = widgets.Button(description='Close')
+        btn_close.on_click(lambda b: (self.player.clear()))
+        display(widgets.HBox([cb_play_boundary, cb_play_cont]), btn_close)
+        pass
 
 # dui = DebugUI(mp4file)
 # dui.set_segment(no_shortvoice_segs)
