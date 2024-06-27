@@ -343,9 +343,13 @@ import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import simpleaudio
 from jjutils.diar_debug import AudioChunk
+import hashlib
+import shelve
 
 class HFWhisper:
     _pipe = None
+    cache = shelve.open('./testdata/cache/whisper.shelve')
+
     def __init__(self, mp4file) -> None:
         self.audio2 = AudioChunk(mp4file)
 
@@ -379,16 +383,22 @@ class HFWhisper:
     def play(self, start_sec, end_sec):
         self.audio2.play(start_sec, end_sec)
 
-    def transcribe(self, start_sec, end_sec, *, language='ja', play=False):
+    def transcribe(self, start_sec, end_sec, *, language='ja', play=False) -> dict:
         clip = self.audio2.data(start_sec, end_sec)
+        key = hashlib.sha256(clip).hexdigest()
         if play:
             self.play_obj = simpleaudio.play_buffer(clip, 1, 2, 16_000)
-        clip = np.frombuffer(clip, np.int16).flatten() / 32768.0
 
-        result = HFWhisper._pipe(clip, return_timestamps=False,
-                           generate_kwargs = {
-                               "language": f"<|{language}|>",
-                               "task":"transcribe"})
+        if key not in HFWhisper.cache:
+            clip = np.frombuffer(clip, np.int16).flatten() / 32768.0
+
+            result = HFWhisper._pipe(clip, return_timestamps=False,
+                            generate_kwargs = {
+                                "language": f"<|{language}|>",
+                                "task":"transcribe"})
+            HFWhisper.cache[key] = result
+
+        result = HFWhisper.cache[key]
         for chunk in result.get('chunks', []):
             chunk['timestamp'] = tuple(round(x + start_sec,3) for x in chunk['timestamp'])
 
@@ -400,13 +410,22 @@ class HFWhisper:
 #
 import openai
 import shelve
+import textwrap
 
-def translate(text, target_language='Korean'):
+
+def translate(text):
     if text not in translate.cache:
         # print('openai called')
         response = _openai.chat.completions.create(
             model="gpt-4o",  # or the latest model you want to use
-            messages=[{"role": "user", "content": f"Translate the following Japanese text to {target_language}. Just answer {target_language}: {text}"}],
+            messages=[{"role": "user", "content": textwrap.dedent(f"""\
+                Translate the following Japanese to Korean:
+
+                Japanese:
+                {text}
+
+                Korean:
+                """)}],
             temperature = 0,
             top_p = 0,
         )
@@ -437,6 +456,8 @@ class DebugDiarUI:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
+        self.speaker_map = {}
+
         self.speaker = None
         self.player = DebugDiarUI._player = VlcPlayer()
         if video_path:
@@ -454,6 +475,7 @@ class DebugDiarUI:
         self.video_path = video_path
 
         self.whisper = HFWhisper(video_path)
+        self.audio_language = 'ja' # 'ko', 'en'
 
 
     @singledispatchmethod
@@ -484,6 +506,19 @@ class DebugDiarUI:
     # def _(self, rawsegs:list[PklSegment], *, min_sec = 0):
     #     self.rawsegs = [ Speaker(i.start_sec, i.end_sec, i.speaker_tag) for i in rawsegs if i.end_sec - i.start_sec > min_sec]
     #     self._setup_ui()
+
+    def caching(self, do_translate=True):
+        for seg in self.rawsegs:
+            if seg.speaker_tag.startswith('SPEAK'):
+
+                trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, language=self.audio_language)
+                text_ja = trans['text']
+                text_ko = ''
+                if self.audio_language != 'ko' and do_translate:
+                    text_ko = translate(text_ja)
+                print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
+        pass
+
 
     async def aplay_all(self, segs, slider:widgets.IntSlider):
         print('0. aplay_all done', self.is_playall)
@@ -540,10 +575,38 @@ class DebugDiarUI:
             # skipped
             return
 
+        tag = self.speaker_map.get(tag, tag)
         self.player.play(start, end)
         self.player.draw_text(f"{tag}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}", clr_index=clr_idx)
         # if tag != 'INTER':
         self.prev_end = end
+
+    def get_text(self, start, end):
+        trans = self.whisper.transcribe(start, end, language=self.audio_language)
+        text_ja = trans['text']
+        text_ko = translate(text_ja) if self.translate else ''
+        return (text_ja, text_ko)
+
+    async def a_transcribe(self, seg, details):
+        import concurrent.futures
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                dur = seg.end_sec - seg.start_sec
+                text_ja, text_ko = await loop.run_in_executor(
+                    executor,
+                    self.get_text, seg.start_sec,seg.end_sec)
+
+                if len(text_ja) > 85: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+                if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+                # print(text_ja, '\n', text_ko)
+
+                tag = self.speaker_map.get(seg.speaker_tag, seg.speaker_tag)
+                range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+                details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {text_ja}<br>  {text_ko}"
+                return None
+        except RuntimeError as ex:
+            print('a_transcribe:', ex)
 
     def _interact_video(self, segs, label='', ui=None):
 
@@ -560,24 +623,28 @@ class DebugDiarUI:
 
             text_ja = text_ko = ''
             if seg.speaker_tag.startswith('SPEAK'):
-                if dur > 10:
-                    text_ja = 'transcribing'
-                    text_ko = ' '
-                    details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
-
                 if self.transcribe:
-                    trans = self.whisper.transcribe(seg.start_sec, seg.end_sec)
-                    text_ja = trans['text']
-                    if len(text_ja) > 85: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+                    asyncio.create_task(self.a_transcribe(seg, details))
+                    text_ja = 'transcribing...'
+                # if dur > 10:
+                #     text_ja = 'transcribing...'
+                #     text_ko = ' '
+                #     details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
 
-                if len(text_ja) and self.translate:
-                    if dur > 10:
-                        text_ko = 'translating...'
-                        details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
-                    text_ko = translate(text_ja)
-                    if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+                # if self.transcribe:
+                #     trans = self.whisper.transcribe(seg.start_sec, seg.end_sec)
+                #     text_ja = trans['text']
+                #     if len(text_ja) > 85: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
 
-            details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
+                # if len(text_ja) and self.translate:
+                #     if dur > 10:
+                #         text_ko = 'translating...'
+                #         details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
+                #     text_ko = translate(text_ja)
+                #     if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+
+            tag = self.speaker_map.get(seg.speaker_tag, seg.speaker_tag)
+            details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {text_ja}<br>  {text_ko}"
 
             # if self.vlc: self.vlc.stop()
             self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
@@ -599,11 +666,11 @@ class DebugDiarUI:
         def slider_value(val:int):
             if 0<= val < count: slider.value = val
 
-        btn_prev = widgets.Button(description='<<')
-        btn_next = widgets.Button(description='>>')
+        btn_prev = widgets.Button(description='',  icon='arrow-left', tooltip='' )
+        btn_next = widgets.Button(description='', icon='arrow-right', tooltip='' )
+        replay_btn = widgets.Button(description='', icon='repeat', tooltip='' )
+        playall_btn = widgets.Button(description='', icon='play', tooltip='' )
 
-        replay_btn = widgets.Button(description='Replay', )
-        playall_btn = widgets.Button(description='PlayAll', )
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
         playall_btn.on_click(lambda btn: self.on_play_all(btn, segs, slider))
         btn_prev.on_click(lambda b: slider_value(slider.value-1))
@@ -652,11 +719,11 @@ class DebugDiarUI:
         display(widgets.HBox([dropdown, lbl_title]))
         select_speaker({"new": SPEAKER_ALL})
 
-        btn_ff5 = widgets.Button(description='+ 5sec')
-        btn_ff10 = widgets.Button(description='+ 10sec')
-        btn_ff5.on_click(lambda b: (self.player.forward(5)))
-        btn_ff10.on_click(lambda b: (self.player.forward(10)))
-        display(widgets.HBox([btn_ff5, btn_ff10]))
+        # btn_ff5 = widgets.Button(description='+ 5sec')
+        # btn_ff10 = widgets.Button(description='+ 10sec')
+        # btn_ff5.on_click(lambda b: (self.player.forward(5)))
+        # btn_ff10.on_click(lambda b: (self.player.forward(10)))
+        # display(widgets.HBox([btn_ff5, btn_ff10]))
 
         # self._interact_video(self.segs_inter, f'diar: inter')
 
