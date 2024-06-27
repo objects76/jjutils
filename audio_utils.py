@@ -211,19 +211,18 @@ if __name__ == '__main__':
     get_segment('testdata/ntt.meeting.srt')
 # %%
 from pydub import AudioSegment, generators # pip install pydub
-import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
+import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleaudio
 
 def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.0, start_end_notifier = False):
     # Load the full audio file
-    assert file_path.endswith('.wav') or file_path.endswith('.mp3')
     audio = AudioSegment.from_file(file_path)
 
-    # Generate a 0.1-second beep at 550 Hz (A4 note)
-    beep_duration = 100  # duration in milliseconds
-    beep_frequency = 550  # frequency in Hz
-    beep_volume = -20  # reduce the beep volume in dB
-    beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
-    beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+    if start_end_notifier:
+        beep_duration = 100  # duration in milliseconds
+        beep_frequency = 550  # frequency in Hz
+        beep_volume = -20  # reduce the beep volume in dB
+        beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+        beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
 
     segments = []
     for (start, end) in ranges:
@@ -245,7 +244,7 @@ def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.
         # Convert segment to raw audio data for playback
         # print(f'{start:.1f} ~ {end.1f}: {end-start:.1f}sec')
         raw_data = segment.raw_data
-        wave_obj = sa.WaveObject(raw_data, num_channels=segment.channels,
+        wave_obj = simpleaudio.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
         if len(ranges) == 1:

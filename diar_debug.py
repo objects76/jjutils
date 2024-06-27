@@ -9,6 +9,12 @@ import simpleaudio
 import subprocess, numpy as np
 import pydub
 
+from pyannote.core import notebook
+import openai
+
+_openai = openai.OpenAI()
+os.makedirs('./testdata/cache', exist_ok=True)
+
 class AudioChunk: # for more fine-controlling(ms).
     def __init__(self, mp4path) -> None:
         self.wave_bytes = AudioChunk.load_audio(mp4path).tobytes()
@@ -17,17 +23,34 @@ class AudioChunk: # for more fine-controlling(ms).
         self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-30).raw_data
         pass
 
-    def play(self, start_sec, end_sec, use_beep = True):
+    def play(self, start_sec, end_sec, use_beep = True, fade_in=False, fade_out=False):
         self.stop()
 
-        assert start_sec < end_sec
-        sample_start = int(start_sec * 16_000)
-        sample_end = int(end_sec * 16_000)
-        wave_clip = self.wave_bytes[sample_start*2:sample_end*2]
+        wave_clip = self.data(start_sec, end_sec)
         if use_beep:
             wave_clip += self.beep
 
+        if fade_in or fade_out:
+            audio_seg = pydub.AudioSegment(wave_clip, sample_width=2, frame_rate=16_000, channels=1)
+            if fade_in:
+                audio_seg = audio_seg.fade(from_gain=-20, duration=1200, start=0)# fade_in
+            if fade_out:
+                audio_seg = audio_seg.fade(to_gain=-20, duration=1200, end=float('inf')) # fade_out
+            wave_clip = audio_seg.raw_data
         self.play_obj = simpleaudio.play_buffer(wave_clip, 1, 2, 16_000)
+
+    def data(self, start_sec, end_sec):
+        assert (start_sec < end_sec) or (end_sec <= 0)
+        sample_start = int(start_sec * 16_000)
+        sample_end = int(end_sec * 16_000)
+        if sample_end <= 0:
+            return self.wave_bytes[sample_start*2:]
+        else:
+            return self.wave_bytes[sample_start*2:sample_end*2]
+
+    def wait(self):
+        if self.play_obj:
+            self.play_obj.wait_done()
 
     def stop(self):
         if self.play_obj:
@@ -36,6 +59,34 @@ class AudioChunk: # for more fine-controlling(ms).
 
     def forward(self, sec:float):
         ...
+
+    # @staticmethod
+    # def apply_fade_out(audio_segment, fade_out_duration_ms=1000):
+    #     # Apply fade-out effect
+    #     faded_audio = audio_segment.fade_out(fade_out_duration_ms)
+    #     return faded_audio
+
+    # @staticmethod
+    # def apply_fade_in(audio_segment, fade_in_duration_ms=1000):
+    #     faded_audio = audio_segment.fade_in(fade_in_duration_ms)
+    #     return faded_audio
+
+
+    def plot(self, start_sec, end_sec):
+        signal = self.data(start_sec, end_sec)
+        signal = np.fromstring(signal, np.int16)
+        Time = np.linspace(0, len(signal) / 16_000, num=len(signal)) + start_sec
+
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(notebook.width, 3))
+        ax = fig.gca()
+        unit = round((end_sec-start_sec) / 30,1)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(unit)) # jjkim
+        ax.axes.get_yaxis().set_visible(False)
+        plt.title("Signal Wave...")
+        plt.plot(Time, signal)
+        plt.show()
+
 
     @staticmethod
     def load_audio(media_input: str, *, sr: int = 16000):
@@ -48,7 +99,7 @@ class AudioChunk: # for more fine-controlling(ms).
             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
 
 
-import pyaudio
+import pyaudio # pip install PyAudio
 
 FRAME_1ms = 16
 class PyAudioPlayer:
@@ -197,9 +248,6 @@ class VlcPlayer:
                 self.stop_play = True
                 await asyncio.sleep(0.1)
 
-            if self.play_to_end:
-                end_sec = 99999
-
             duration = end_sec - start_sec
             if duration > 8*1.2 and self.play_boundary and not self.play_to_end:
                 ranges = [(start_sec, start_sec+4, 's.'), (end_sec-3, end_sec, 'e.')]
@@ -220,7 +268,10 @@ class VlcPlayer:
                 if self.stop_play: break
                 self.vlcp.set_time(int(ssec * 1000))
                 self.end_ms = int(esec * 1000)
-                self.audio.play(ssec, esec, use_beep= sec_type != 's.')
+
+                fad_out = sec_type == 's.'
+                fad_in = sec_type == 'e.'
+                self.audio.play(ssec, -1 if self.play_to_end else esec , use_beep= sec_type != 's.', fade_out=fad_out, fade_in=fad_in)
 
                 while self.stop_play == False and self.audio.play_obj.is_playing():
                     # update text
@@ -285,8 +336,88 @@ class VlcPlayer:
         self._draw_text(text, clr_argb=VlcPlayer.clrs[clr_index])
 
 
+#
+#
+#
+import torch
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+import simpleaudio
+from jjutils.diar_debug import AudioChunk
+
+class HFWhisper:
+    _pipe = None
+    def __init__(self, mp4file) -> None:
+        self.audio2 = AudioChunk(mp4file)
+
+        dtype = torch.bfloat16
+        model_id = "openai/whisper-large-v3"
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            model_id, torch_dtype=dtype, # low_cpu_mem_usage=True, use_safetensors=True
+        )
+
+        if HFWhisper._pipe is None:
+            processor = AutoProcessor.from_pretrained(model_id)
+            HFWhisper._pipe = pipeline(
+                "automatic-speech-recognition",
+                model=model,
+                tokenizer=processor.tokenizer,
+                feature_extractor=processor.feature_extractor,
+                # max_new_tokens=128,
+                # chunk_length_s=30,
+                # batch_size=16,
+                # return_timestamps=True,
+                torch_dtype=dtype,
+                device='cuda:0',
+            )
+
+    def __del__(self):
+        if HFWhisper._pipe:
+            del HFWhisper._pipe
+            torch.cuda.empty_cache()
+            HFWhisper._pipe = None
+
+    def play(self, start_sec, end_sec):
+        self.audio2.play(start_sec, end_sec)
+
+    def transcribe(self, start_sec, end_sec, *, language='ja', play=False):
+        clip = self.audio2.data(start_sec, end_sec)
+        if play:
+            self.play_obj = simpleaudio.play_buffer(clip, 1, 2, 16_000)
+        clip = np.frombuffer(clip, np.int16).flatten() / 32768.0
+
+        result = HFWhisper._pipe(clip, return_timestamps=False,
+                           generate_kwargs = {
+                               "language": f"<|{language}|>",
+                               "task":"transcribe"})
+        for chunk in result.get('chunks', []):
+            chunk['timestamp'] = tuple(round(x + start_sec,3) for x in chunk['timestamp'])
+
+        return result
 
 
+#
+#
+#
+import openai
+import shelve
+
+def translate(text, target_language='Korean'):
+    if text not in translate.cache:
+        # print('openai called')
+        response = _openai.chat.completions.create(
+            model="gpt-4o",  # or the latest model you want to use
+            messages=[{"role": "user", "content": f"Translate the following Japanese text to {target_language}. Just answer {target_language}: {text}"}],
+            temperature = 0,
+            top_p = 0,
+        )
+        translate.cache[text] = response.choices[0].message.content
+    return translate.cache[text]
+
+translate.cache = shelve.open('./testdata/cache/translate.shelve')
+
+#
+#
+#
 from pathlib import Path
 from pyannote.database.util import load_rttm
 from IPython.display import display, update_display
@@ -302,7 +433,7 @@ from collections import namedtuple
 Speaker = namedtuple('Speaker', ['start_sec', 'end_sec', 'speaker_tag'])
 class DebugDiarUI:
     _player = None
-    def __init__(self, video_path = None) -> None:
+    def __init__(self, *, video_path = None, offset=0) -> None:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
@@ -312,20 +443,33 @@ class DebugDiarUI:
             self.set_videofile(video_path)
 
         self.prev_end = 0
+        self.inter_delay = 0.5
+
+        self.transcribe = True
+        self.translate = self.transcribe and True
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
         self.player.set_file(video_path)
         self.video_path = video_path
 
+        self.whisper = HFWhisper(video_path)
+
 
     @singledispatchmethod
-    def set_segment(self, anno:Annotation, *, min_sec = 0):
+    def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
         self.rawsegs = []
         for turn, _, speaker_tag in anno.itertracks(yield_label=True):
             if turn.end - turn.start > min_sec:
                 self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
         self.anno = anno
+
+        # find near segment.
+        self.cur_segidx = 0
+        for i, seg in enumerate(self.rawsegs):
+            if seg.start_sec > start_sec: break
+            self.cur_segidx = i
+
         self._setup_ui()
 
     @set_segment.register
@@ -369,7 +513,8 @@ class DebugDiarUI:
                 # print('wait done', start_sec)
 
                 if not self.is_playall: break
-                await asyncio.sleep(1.5) # interval between segments
+                if self.inter_delay> 0:
+                    await asyncio.sleep(self.inter_delay) # interval between segments
 
         except AttributeError as ex:
             print('aplay_all.ex:', ex)
@@ -403,13 +548,36 @@ class DebugDiarUI:
     def _interact_video(self, segs, label='', ui=None):
 
         count = len(segs)
-        details = widgets.Label(value=f'')
+        # details = widgets.Label(value=f'')
+        details = widgets.HTML(value=f'')
 
         def fn_slider(idx):
             # self.is_playall = False
+
             seg = segs[idx]
-            range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / {seg.start_sec:.3f} ~ {seg.end_sec:.3f}"
-            details.value = f"Range= {range}     [{seg.speaker_tag}]"
+            dur = seg.end_sec - seg.start_sec
+            range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+
+            text_ja = text_ko = ''
+            if seg.speaker_tag.startswith('SPEAK'):
+                if dur > 10:
+                    text_ja = 'transcribing'
+                    text_ko = ' '
+                    details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
+
+                if self.transcribe:
+                    trans = self.whisper.transcribe(seg.start_sec, seg.end_sec)
+                    text_ja = trans['text']
+                    if len(text_ja) > 85: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+
+                if len(text_ja) and self.translate:
+                    if dur > 10:
+                        text_ko = 'translating...'
+                        details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
+                    text_ko = translate(text_ja)
+                    if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+
+            details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
 
             # if self.vlc: self.vlc.stop()
             self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
@@ -420,6 +588,7 @@ class DebugDiarUI:
 
         # [0, max]
         slider = widgets.IntSlider(
+            value=self.cur_segidx,
             description=f'clips: ',
             min=0, max= max(0, len(segs)-1), step=1,
             continuous_update=False,
@@ -441,7 +610,8 @@ class DebugDiarUI:
         btn_next.on_click(lambda b: slider_value(slider.value+1))
         if ui: fn_slider(0) # play initial
 
-        vbox = widgets.VBox([title, details, slider, widgets.HBox([replay_btn, playall_btn, btn_prev, btn_next])])
+        hbox = widgets.HBox([replay_btn, playall_btn, btn_prev, btn_next])
+        vbox = widgets.VBox([title, slider, hbox, details, ])
         if ui == None:
             ui = vbox
             display(ui, display_id='11')
@@ -501,6 +671,17 @@ class DebugDiarUI:
             description='Play to end',
             indent=False
         )
+        cb_transcribe = widgets.Checkbox(
+            value= self.transcribe,
+            description='Transcribe',
+            indent=False
+        )
+        cb_translate = widgets.Checkbox(
+            value= self.translate,
+            description='Translate',
+            indent=False,
+            disabled = not self.transcribe,
+        )
 
         def on_checkbox_change(change):
             desc, value = change['owner'].description, change['new']
@@ -509,13 +690,54 @@ class DebugDiarUI:
             elif desc == 'Play start/end only':
                 self.player.play_boundary = value
 
+            elif desc == 'Transcribe':
+                self.transcribe = value
+                cb_translate.disabled = (value == False)
+            elif desc == 'Translate':
+                self.translate = value
+
         cb_play_boundary.observe(on_checkbox_change, names='value')
         cb_play_cont.observe(on_checkbox_change, names='value')
+        cb_transcribe.observe(on_checkbox_change, names='value')
+        cb_translate.observe(on_checkbox_change, names='value')
+
+        def select_inter_delay(change):
+            delay = change['new']
+            self.inter_delay = float(delay)
+        inter_delay = widgets.Dropdown(options='0.0,0.5,1.0,1.5'.split(','),
+                                       value=str(self.inter_delay), description='delay(sec): ', )
+        inter_delay.observe(select_inter_delay, names='value')
 
         btn_close = widgets.Button(description='Close')
         btn_close.on_click(lambda b: (self.player.clear()))
-        display(widgets.HBox([cb_play_boundary, cb_play_cont]), btn_close)
+        hbox = widgets.HBox([cb_play_boundary, cb_play_cont, cb_transcribe, cb_translate, inter_delay])
+        display(hbox, btn_close)
         pass
 
 # dui = DebugUI(mp4file)
 # dui.set_segment(no_shortvoice_segs)
+
+
+
+#
+#
+#
+from pydub import AudioSegment
+from pydub import playback
+import io
+
+
+def tts(text:str, man=False):
+    if text not in tts.cache:
+        response = _openai.audio.speech.create(
+            model="tts-1", # tts-1-hd
+            voice="onyx" if man else 'nova', # 'nova', onyx, https://platform.openai.com/docs/guides/text-to-speech
+            response_format = 'mp3', speed=1.,
+            input=text,
+        )
+        tts.cache[text] = response.content
+
+    mp3bytes = tts.cache[text]
+    audio_segment = AudioSegment.from_file(io.BytesIO(mp3bytes), format="mp3")
+    playback.play( audio_segment )
+tts.cache = shelve.open('./testdata/cache/tts.shelve')
