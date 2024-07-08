@@ -343,6 +343,8 @@ def _plot_anno(diar, title=None):
         # plt.savefig(title+'.png')
     plt.show()
 
+
+
 def get_der(rttm_pred, rttm_gt, plot=False):
     from pyannote.database.util import load_rttm
     from pyannote.metrics.diarization import DiarizationErrorRate
@@ -355,10 +357,16 @@ def get_der(rttm_pred, rttm_gt, plot=False):
 
     metric = DiarizationErrorRate()
     der = metric(groundtruth, prediction) * 100
+    print("jjkim:\33[33m", f"{der=}%", "\33[0m")
 
     if plot:
         mapping = metric.optimal_mapping(groundtruth, prediction)
-        _plot_anno(prediction.rename_labels(mapping=mapping), f"{Path(rttm_pred).stem}, {der= :.1f}%")
-        _plot_anno(groundtruth, 'groundtruth')
+        prediction = prediction.rename_labels(mapping=mapping)
+        prediction.title = f"{Path(rttm_pred).stem}, der={der:.1f}%"
+        groundtruth.title = 'groundtruth'
+        display(prediction)
+        display(groundtruth)
+        # _plot_anno(prediction.rename_labels(mapping=mapping), f"{Path(rttm_pred).stem}, {der= :.1f}%")
+        # _plot_anno(groundtruth, 'groundtruth')
 
     return der

@@ -158,6 +158,18 @@ class cout:
             print(value)
 out = cout
 
+
+class cout2:
+    black,red,green,yellow,blue,magenta,cyan,white, gray = [f'\33[{c}m' for c in [*range(30,38), 90]]
+    def __ror__(self, txt):
+        print(self.clr, end='')
+        self.clr = '\33[0m'
+        print(txt)
+
+    def __call__(self, clr):
+        self.clr = clr
+        return self
+
 #
 #
 #
