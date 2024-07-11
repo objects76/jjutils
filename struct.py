@@ -5,7 +5,11 @@
 # dict to attrs
 #
 class Struct(object):
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
+        for arg in args:
+            assert isinstance(arg, dict)
+            kwargs.update(dict(arg))
+
         for key, val in kwargs.items():
             if isinstance(val, dict):
                 val = Struct(**val)

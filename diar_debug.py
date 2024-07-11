@@ -326,18 +326,19 @@ class VlcPlayer:
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Size, 60)
         self.text = text
 
-    clrs = [
-        0xFF5733, 0x33FF57, 0x3357FF, 0xFF33A1, 0xFFC300,
-        0x8D33FF, 0x33FFF5, 0xFF8D33, 0x57FF33, 0xA1FF33,
-    ]
+
     clr_index = 0
-    def draw_text(self, text, *, clr_index=None):
-        if clr_index is None:
+    def draw_text(self, text, *, clr_index:int = -1):
+        if clr_index < 0:
             clr_index = VlcPlayer.clr_index
             VlcPlayer.clr_index += 1
 
-        clr_index = clr_index % len(VlcPlayer.clrs)
-        self._draw_text(text, clr_argb=VlcPlayer.clrs[clr_index])
+        clrs = [
+            0xFF5733, 0x33FF57, 0x3357FF, 0xFF33A1, 0xFFC300,
+            0x8D33FF, 0x33FFF5, 0xFF8D33, 0x57FF33, 0xA1FF33,
+        ]
+        text_clr = clrs[clr_index % len(clrs)]
+        self._draw_text(text, clr_argb=text_clr)
 
 
 #
@@ -471,7 +472,7 @@ class DebugDiarUI:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
-        self.speaker_map = {}
+        self.speaker_order = dict()
 
         self.speaker = None
         self.player = DebugDiarUI._player = VlcPlayer()
@@ -500,6 +501,7 @@ class DebugDiarUI:
             if turn.end - turn.start > min_sec:
                 self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
         self.anno = anno
+        self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
         # find near segment.
         self.cur_segidx = 0
@@ -524,15 +526,16 @@ class DebugDiarUI:
 
     def update_caching(self, nth, do_translate=True, force_update=False, debug=False):
         seg = self.rawsegs[nth]
-        if seg.speaker_tag.startswith('SPEAK') or seg.speaker_tag.startswith('spk'):
+        if seg.speaker_tag.startswith('INTER') or seg.speaker_tag.startswith('OVERLAPPED'):
+            return
 
-            trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, force_update=force_update, language=self.audio_language)
-            text_ja = trans['text']
-            text_ko = ''
-            if self.audio_language != 'ko' and do_translate:
-                text_ko = translate(text_ja, force_update)
-            if debug:
-                print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
+        trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, force_update=force_update, language=self.audio_language)
+        text_ja = trans['text']
+        text_ko = ''
+        if self.audio_language != 'ko' and do_translate:
+            text_ko = translate(text_ja, force_update)
+        if debug:
+            print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
 
     def caching(self, do_translate=True, force_update=False, debug=False):
         for ith in range(len(self.rawsegs)):
@@ -543,7 +546,7 @@ class DebugDiarUI:
         for seg in self.rawsegs:
             if not seg.speaker_tag.startswith('SPEAK') and not seg.speaker_tag.startswith('spk'):
                 continue
-            tag = self.speaker_map.get(seg.speaker_tag, seg.speaker_tag)
+            tag = seg.speaker_tag
             start, end = seg.start_sec, seg.end_sec
             text_ja, text_ko = self.get_text(start,end)
             scripts.append( dict(start=round(start,3), end=round(end,3), speaker=tag, text_ja=text_ja, text_ko=text_ko) )
@@ -599,17 +602,13 @@ class DebugDiarUI:
             return
 
     def _play(self, tag, start, end):
-        clr_idx = 0
-        if m := re.search(r'\d+', tag):
-            clr_idx = int(m.group()) + 1
-
         if self.speaker != 'OVERLAPPED' and tag == 'OVERLAPPED':
-            # skipped
             return
 
-        tag = self.speaker_map.get(tag, tag)
         self.player.play(start, end)
-        self.player.draw_text(f"{tag}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}", clr_index=clr_idx)
+        self.player.draw_text(
+            f"{tag}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
+            clr_index= self.speaker_order.get(tag, -1))
         # if tag != 'INTER':
         self.prev_end = end
 
@@ -633,7 +632,7 @@ class DebugDiarUI:
                 if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
                 # print(text_ja, '\n', text_ko)
 
-                tag = self.speaker_map.get(seg.speaker_tag, seg.speaker_tag)
+                tag = seg.speaker_tag
                 range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
                 details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
                 return None
@@ -654,7 +653,9 @@ class DebugDiarUI:
             range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
 
             text_ja = text_ko = ''
-            if self.transcribe and (seg.speaker_tag.startswith('SPEAK') or seg.speaker_tag.startswith('spk')):
+            if self.transcribe and not (
+                seg.speaker_tag.startswith('INTER') and seg.speaker_tag.endswith('OVERLAPPED')
+                ):
                 asyncio.create_task(self.a_transcribe(seg, details))
                 text_ja = 'transcribing...'
 
@@ -675,7 +676,7 @@ class DebugDiarUI:
                 #     text_ko = translate(text_ja)
                 #     if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
 
-            tag = self.speaker_map.get(seg.speaker_tag, seg.speaker_tag)
+            tag = seg.speaker_tag
             details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {text_ja}<br>  {text_ko}"
 
             # if self.vlc: self.vlc.stop()
@@ -731,6 +732,7 @@ class DebugDiarUI:
 
         lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
         lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
+
         def select_speaker(change):
             speaker = change['new']
             self.speaker = speaker
@@ -742,7 +744,9 @@ class DebugDiarUI:
             if speaker == SPEAKER_ALL:
                 update_display( self.anno , display_id=self.disp_id)
             else:
-                update_display( self.anno.label_support(speaker) , display_id=self.disp_id)
+                anno = self.anno.label_support(speaker)
+                anno.title = speaker
+                update_display( anno, display_id=self.disp_id)
 
         speakers = set( seg.speaker_tag for seg in self.rawsegs)
         speakers = [SPEAKER_ALL, *sorted(speakers)]
