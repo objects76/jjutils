@@ -3,7 +3,7 @@ import vlc # !pip install python-vlc, https://www.olivieraubert.net/vlc/python-c
 import gc, time
 import re
 from .diar_utils import to_hhmmss
-
+from jjutils.static import static_vars
 
 import simpleaudio
 import subprocess, numpy as np
@@ -20,7 +20,8 @@ class AudioChunk: # for more fine-controlling(ms).
         self.wave_bytes = AudioChunk.load_audio(mp4path).tobytes()
         self.play_obj = None
 
-        self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-30).raw_data
+        BEEP_FREQ = 1200
+        self.beep = pydub.generators.Sine(BEEP_FREQ).to_audio_segment(duration=30).apply_gain(-30).raw_data
         pass
 
     def play(self, start_sec, end_sec, use_beep = True, fade_in=False, fade_out=False, wait_done=False):
@@ -240,6 +241,10 @@ class VlcPlayer:
         self.audio = self.instance = self.vlcp = None
         gc.collect()
 
+    def stop(self):
+        self.audio.stop()
+        # self.vlcp.pause()
+
     def play(self, start_sec:float, end_sec:float):
         asyncio.create_task(self.aplay(start_sec, end_sec))
 
@@ -417,7 +422,7 @@ import openai
 import shelve
 import json
 
-
+@static_vars(cache = shelve.open('./testdata/cache/translate.shelve'))
 def translate(text_ja, force_update = False):
     if text_ja not in translate.cache or force_update:
         # print('openai called')
@@ -447,8 +452,6 @@ def translate(text_ja, force_update = False):
         return translate.cache[text_ja]
     except:
         return text_ja
-
-translate.cache = shelve.open('./testdata/cache/translate.shelve')
 
 #
 #
@@ -599,6 +602,7 @@ class DebugDiarUI:
             return asyncio.create_task(self.aplay_all(segs, slider))
         else:
             btn.icon = 'play'
+            self.player.stop()
             return
 
     def _play(self, tag, start, end):
@@ -830,6 +834,8 @@ from pydub import playback
 import io
 
 
+
+@static_vars(cache = shelve.open('./testdata/cache/tts.shelve'))
 def tts(text:str, man=False):
     if text not in tts.cache:
         response = _openai.audio.speech.create(
@@ -843,4 +849,3 @@ def tts(text:str, man=False):
     mp3bytes = tts.cache[text]
     audio_segment = AudioSegment.from_file(io.BytesIO(mp3bytes), format="mp3")
     playback.play( audio_segment )
-tts.cache = shelve.open('./testdata/cache/tts.shelve')

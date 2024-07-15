@@ -99,76 +99,19 @@ class MyStyle(Style):
     }
 
 class cout:
-    def __init__(self, nl_before = False, suppress=False):
-        self.suppress = suppress
-        self.nl_before = nl_before
-
-    markers = []
-    @staticmethod
-    def set_markers( markers_:list[str] ):
-        cout.markers = sorted(markers_, key=len, reverse=True)
+    black,red,green,yellow,blue,magenta,cyan,white,gray = *range(30,38), 90
 
     def __ror__(self, txt):
-
-        if txt is None or self.suppress:
-            return
-        if self.nl_before:
-            print()
-
-        frame = inspect.currentframe()
-        caller_locals = frame.f_back.f_locals
-
-        # print( caller_locals.items() )
-
-        arg_name = [name for name, value in caller_locals.items() if value is txt]
-        label = arg_name[0] if arg_name else None
-        # print( arg_name )
-        # arg_names = [name for name, value in caller_locals.items() if value in argv]
-
-        try:
-            dict_txt = dict(txt)
-            raw_json = json.dumps(dict(txt), indent=3, ensure_ascii=False)
-
-            colorful = highlight(
-                raw_json,
-                lexer=JsonLexer(),
-                formatter=Terminal256Formatter(style=MyStyle),
-            )
-            print(colorful)
-
-        except Exception as ex:
-            print('cout:', ex)
-            value = str(txt)
-            for marker in self.markers:
-                idx = len(value)  # initial rfind position
-                while True:
-                    idx = value.rfind(marker, 0, idx)
-                    if idx < 0:
-                        break
-                    if (
-                        idx == 0 or value[idx - 1] != "m"
-                    ):  # if it is part of \33[33m: already handled.
-                        value = (
-                            value[:idx]
-                            + "\33[33m"
-                            + marker
-                            + "\33[0m"
-                            + value[idx + len(marker) :]
-                        )
-            print(value)
-out = cout
-
-
-class cout2:
-    black,red,green,yellow,blue,magenta,cyan,white, gray = [f'\33[{c}m' for c in [*range(30,38), 90]]
-    def __ror__(self, txt):
-        print(self.clr, end='')
-        self.clr = '\33[0m'
-        print(txt)
+        if self.clr != 0:
+            print(f"\33[{self.clr}m{txt}\33[0m")
+            self.clr = 0
+        else:
+            print(txt)
 
     def __call__(self, clr):
         self.clr = clr
         return self
+out = cout()
 
 #
 #
