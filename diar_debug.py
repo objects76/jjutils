@@ -619,7 +619,10 @@ class DebugDiarUI:
     def get_text(self, start, end):
         trans = self.whisper.transcribe(start, end, language=self.audio_language)
         text_ja = trans['text']
-        text_ko = translate(text_ja) if self.translate else ''
+        if self.transcribe and self.audio_language != 'ko':
+            text_ko = translate(text_ja)
+        else:
+            text_ko = ''
         return (text_ja, text_ko)
 
     async def a_transcribe(self, seg, details):
