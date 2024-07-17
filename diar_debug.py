@@ -527,18 +527,23 @@ class DebugDiarUI:
     #     self.rawsegs = [ Speaker(i.start_sec, i.end_sec, i.speaker_tag) for i in rawsegs if i.end_sec - i.start_sec > min_sec]
     #     self._setup_ui()
 
+    @staticmethod
+    def is_speaker(tag):
+        if tag.startswith('INTER') or tag.startswith('OVERLAPPED'):
+            return False
+        return True
+
     def update_caching(self, nth, do_translate=True, force_update=False, debug=False):
         seg = self.rawsegs[nth]
-        if seg.speaker_tag.startswith('INTER') or seg.speaker_tag.startswith('OVERLAPPED'):
-            return
-
-        trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, force_update=force_update, language=self.audio_language)
-        text_ja = trans['text']
-        text_ko = ''
-        if self.audio_language != 'ko' and do_translate:
-            text_ko = translate(text_ja, force_update)
-        if debug:
-            print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
+        text_ja = text_ko = ''
+        if self.is_speaker(seg.speaker_tag):
+            trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, force_update=force_update, language=self.audio_language)
+            text_ja = trans['text']
+            text_ko = ''
+            if self.audio_language != 'ko' and do_translate:
+                text_ko = translate(text_ja, force_update)
+            if debug:
+                print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
 
     def caching(self, do_translate=True, force_update=False, debug=False):
         for ith in range(len(self.rawsegs)):
@@ -547,11 +552,11 @@ class DebugDiarUI:
     def get_script(self):
         scripts = []
         for seg in self.rawsegs:
-            if not seg.speaker_tag.startswith('SPEAK') and not seg.speaker_tag.startswith('spk'):
-                continue
-            tag = seg.speaker_tag
-            start, end = seg.start_sec, seg.end_sec
-            text_ja, text_ko = self.get_text(start,end)
+            text_ja = text_ko = ''
+            if self.is_speaker(seg.speaker_tag):
+                tag = seg.speaker_tag
+                start, end = seg.start_sec, seg.end_sec
+                text_ja, text_ko = self.get_text(start,end)
             scripts.append( dict(start=round(start,3), end=round(end,3), speaker=tag, text_ja=text_ja, text_ko=text_ko) )
         return dict(
             media= str(self.video_path),
@@ -631,13 +636,15 @@ class DebugDiarUI:
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 dur = seg.end_sec - seg.start_sec
-                text_ja, text_ko = await loop.run_in_executor(
-                    executor,
-                    self.get_text, seg.start_sec,seg.end_sec)
 
-                if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
-                if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
-                # print(text_ja, '\n', text_ko)
+                text_ja = text_ko = ''
+                if self.is_speaker(seg.speaker_tag):
+                    text_ja, text_ko = await loop.run_in_executor(
+                        executor,
+                        self.get_text, seg.start_sec,seg.end_sec)
+                    if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+                    if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+                    # print(text_ja, '\n', text_ko)
 
                 tag = seg.speaker_tag
                 range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
