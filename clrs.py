@@ -4,6 +4,8 @@ class text_color:
     black,red,green,yellow,blue,magenta,cyan,white, gray = [*range(30,38), 90] # fgclr,  [*range(90,98), ''] # light-fgclr
     light = 60
     bold, underline, strike  = 1,4,9 # attrs supported on vscode notebook.
+    bold, italic, underline, blink_slow, blink_fast, inverse, hidden, strike = 1, 3, 4, 5, 6, 7, 8, 9  # attrs supported on vscode notebook.
+
     def __init__(self, fg:int=0,bg:int=0,attr:int=0):
         self.clr = f'\33[{attr}'
         # assert fg != bg, f"invalid {fg=}, {bg=}"
