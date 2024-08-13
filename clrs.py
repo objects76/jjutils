@@ -4,25 +4,15 @@ class text_color:
     black,red,green,yellow,blue,magenta,cyan,white,gray = [*range(30,38), 90] # fgclr,  [*range(90,98), ''] # light-fgclr
     bold, italic, underline, strike = 1, 3, 4, 9  # attrs supported on vscode notebook.
     def __init__(self, fg:int=0,bg:int=0,attr:int=0):
-        self.clr = f'\33[{attr}'
-        # assert fg != bg, f"invalid {fg=}, {bg=}"
-        if fg: self.clr += f';{fg}'
-        if bg: self.clr += f';{bg+10}'
-        self.clr += 'm'
+        clrs = []
+        if attr: clrs.append(attr)
+        if fg: clrs.append(fg)
+        if bg: clrs.append(bg+10)
+        clrs = ';'.join(clrs)
+        self.clr += f'\33[{clrs}m'
 
     def __ror__(self, obj):
-        if self.tmpclr:
-            text = self.tmpclr + str(obj) + '\33[0m'
-            self.tmpclr = None
-            return text
         return self.clr + str(obj) + '\33[0m'
-
-    def __call__(self,*,fg=0, bg=0):
-        _bg,_fg = self.clr[2:-1].split(';')
-        if bg>0: _bg = bg+10
-        if fg>0: _fg = fg
-        self.tmpclr = f"\33[{_bg};{_fg}m"
-        return self
     @staticmethod
     def all(): return (text_color(clr) for clr in [*range(30,38), 90])
 
