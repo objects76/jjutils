@@ -3,9 +3,12 @@ import re
 class text_color:
     black,red,green,yellow,blue,magenta,cyan,white,gray = [*range(30,38), 90] # fgclr,  [*range(90,98), ''] # light-fgclr
     bold, italic, underline, strike = 1, 3, 4, 9  # attrs supported on vscode notebook.
-    def __init__(self, fg:int=0,bg:int=0):
-        self.clr = f'\33[{bg+10 if bg else 0};{fg}m'
-        self.tmpclr = None
+    def __init__(self, fg:int=0,bg:int=0,attr:int=0):
+        self.clr = f'\33[{attr}'
+        # assert fg != bg, f"invalid {fg=}, {bg=}"
+        if fg: self.clr += f';{fg}'
+        if bg: self.clr += f';{bg+10}'
+        self.clr += 'm'
 
     def __ror__(self, obj):
         if self.tmpclr:
