@@ -8,8 +8,7 @@ class text_color:
         if attr: clrs.append(attr)
         if fg: clrs.append(fg)
         if bg: clrs.append(bg+10)
-        clrs = ';'.join(clrs)
-        self.clr += f'\33[{clrs}m'
+        self.clr += f'\33[{";".join(clrs)}m'
 
     def __ror__(self, obj):
         return self.clr + str(obj) + '\33[0m'
