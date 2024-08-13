@@ -34,17 +34,5 @@ def colors():
     print("\nThe 256 colors scheme is:")
     print(''.join([colors_256(x, bg) for x in range(256)]))
 
-
-#
-#
-#
-red = text_color(text_color.red)
-green = text_color(text_color.green)
-blue = text_color(text_color.blue)
-yellow = text_color(text_color.yellow)
-magenta = text_color(text_color.magenta)
-cyan = text_color(text_color.cyan)
-gray = text_color(text_color.gray)
-
 if __name__ == '__main__':
     colors()
