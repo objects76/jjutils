@@ -4,11 +4,11 @@ class text_color:
     black,red,green,yellow,blue,magenta,cyan,white,gray = [*range(30,38), 90] # fgclr,  [*range(90,98), ''] # light-fgclr
     bold, italic, underline, strike = 1, 3, 4, 9  # attrs supported on vscode notebook.
     def __init__(self, fg:int=0,bg:int=0,attr:int=0):
-        clrs = []
-        if attr: clrs.append(attr)
-        if fg: clrs.append(fg)
-        if bg: clrs.append(bg+10)
-        self.clr += f'\33[{";".join(clrs)}m'
+        tmp = []
+        if attr: tmp.append(str(attr))
+        if fg: tmp.append(str(fg))
+        if bg: tmp.append(str(bg+10))
+        self.clr = f'\33[{";".join(tmp)}m'
 
     def __ror__(self, obj):
         return self.clr + str(obj) + '\33[0m'
