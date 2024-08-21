@@ -31,6 +31,5 @@ def colors():
     print("\nThe 256 colors scheme is:")
     print(''.join([colors_256(x, bg) for x in range(256)]))
 
-
 if __name__ == '__main__':
     colors()

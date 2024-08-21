@@ -239,14 +239,20 @@ def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.
 
         segments.append(segment)
 
+    from IPython.display import display, update_display
+    handle = display('', display_id=True)
+
     # Play each segment
-    for segment, (start,end) in zip(segments, ranges):
+    n_total = len(segments)
+
+    for i, (segment, (start,end)) in enumerate(zip(segments, ranges), start=1):
         # Convert segment to raw audio data for playback
         # print(f'{start:.1f} ~ {end.1f}: {end-start:.1f}sec')
         raw_data = segment.raw_data
         wave_obj = simpleaudio.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
+        update_display(f'> {start} ~ {end}, {i}/{n_total}', display_id=handle.display_id)
         if len(ranges) == 1:
             return play_obj
         play_obj.wait_done()# play_obj.is_playing
