@@ -333,16 +333,23 @@ class VlcPlayer:
 
 
     clr_index = 0
-    def draw_text(self, text, *, clr_index:int = -1):
-        if clr_index < 0:
-            clr_index = VlcPlayer.clr_index
-            VlcPlayer.clr_index += 1
+    def draw_text(self, text, *, clr_index:int = -1, rgba:list[float] = None):
+        if rgba is None:
+            if clr_index < 0:
+                clr_index = VlcPlayer.clr_index
+                VlcPlayer.clr_index += 1
 
-        clrs = [
-            0xFF5733, 0x33FF57, 0x3357FF, 0xFF33A1, 0xFFC300,
-            0x8D33FF, 0x33FFF5, 0xFF8D33, 0x57FF33, 0xA1FF33,
-        ]
-        text_clr = clrs[clr_index % len(clrs)]
+            clrs = [
+                0xFF5733, 0x33FF57, 0x3357FF, 0xFF33A1, 0xFFC300,
+                0x8D33FF, 0x33FFF5, 0xFF8D33, 0x57FF33, 0xA1FF33,
+            ]
+            text_clr = clrs[clr_index % len(clrs)]
+        else:
+            r_hex = (int(rgba[0] * 255)&0xff) << 16
+            g_hex = (int(rgba[1] * 255)&0xff) << 8
+            b_hex = (int(rgba[2] * 255)&0xff) << 0
+            text_clr = r_hex | g_hex | b_hex
+
         self._draw_text(text, clr_argb=text_clr)
 
 
@@ -477,7 +484,7 @@ class DebugDiarUI:
 
         self.speaker_order = dict()
 
-        self.speaker = None
+        self.speaker_filter = None
         self.player = DebugDiarUI._player = VlcPlayer()
         if video_path:
             self.set_videofile(video_path)
@@ -610,14 +617,18 @@ class DebugDiarUI:
             self.player.stop()
             return
 
-    def _play(self, tag, start, end):
-        if self.speaker != 'OVERLAPPED' and tag == 'OVERLAPPED':
+    def _play(self, segment_speaker, start, end):
+        from pyannote.core import notebook
+        if self.speaker_filter != 'OVERLAPPED' and segment_speaker == 'OVERLAPPED':
             return
+        # self.speaker_filter # speaker filter value in combobox
 
         self.player.play(start, end)
         self.player.draw_text(
-            f"{tag}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
-            clr_index= self.speaker_order.get(tag, -1))
+            f"{segment_speaker}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
+            # clr_index= self.speaker_order.get(tag, -1)
+            rgba= notebook[segment_speaker][2]
+            )
         # if tag != 'INTER':
         self.prev_end = end
 
@@ -739,7 +750,7 @@ class DebugDiarUI:
         self.roi_widgets = None
         self.is_playall = False
 
-        self.speaker == SPEAKER_ALL
+        self.speaker_filter == SPEAKER_ALL
         self.disp_id = str(time.time())
         display( self.anno, display_id=self.disp_id)
         # update_display( self.anno , display_id=self.disp_id)
@@ -749,7 +760,7 @@ class DebugDiarUI:
 
         def select_speaker(change):
             speaker = change['new']
-            self.speaker = speaker
+            self.speaker_filter = speaker
 
             segs = self.rawsegs if speaker == SPEAKER_ALL else [item for item in self.rawsegs if item.speaker_tag == speaker]
             self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
