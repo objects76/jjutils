@@ -3,19 +3,16 @@ import re
 class text_color:
     black,red,green,yellow,blue,magenta,cyan,white,gray = [*range(30,38), 90] # fgclr,  [*range(90,98), ''] # light-fgclr
     bold, italic, underline, strike = 1, 3, 4, 9  # attrs supported on vscode notebook.
-    def __init__(self, fg:int=0,bg:int=0,attr:int=0):
-        tmp = []
-        if attr: tmp.append(str(attr))
-        if fg: tmp.append(str(fg))
-        if bg: tmp.append(str(bg+10))
-        self.clr = f'\33[{";".join(tmp)}m'
-
-    def __ror__(self, obj):
-        return self.clr + str(obj) + '\33[0m'
+    def __init__(self, fg,bg=0,attr=0):
+        attr = f'{attr};' if attr > 0 else ''
+        bg = f'{bg+10};' if bg > 0 else ''
+        self.clr = f'\33[{attr}{bg}{fg}m'
+    def __ror__(self, obj): return self.clr + str(obj) + '\33[0m'
     @staticmethod
     def all(): return (text_color(clr) for clr in [*range(30,38), 90])
 # black,red,green,yellow,blue,magenta,cyan,white,gray = text_color.all()
 
+black,red,green,yellow,blue,magenta,cyan,white,gray = text_color.all()
 
 # https://stackabuse.com/how-to-print-colored-text-in-python/
 def clr256(fg,bg):
