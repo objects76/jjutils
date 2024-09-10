@@ -14,6 +14,7 @@ class text_color:
         return self.clr + str(obj) + '\33[0m'
     @staticmethod
     def all(): return (text_color(clr) for clr in [*range(30,38), 90])
+# black,red,green,yellow,blue,magenta,cyan,white,gray = text_color.all()
 
 
 # https://stackabuse.com/how-to-print-colored-text-in-python/
