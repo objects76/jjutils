@@ -22,6 +22,26 @@ def static_vars(**kwargs):
     return decorate
 
 
+def set_default_logger():
+    import logging
+    logging.basicConfig(#level=logging.DEBUG,
+                        format='%(asctime)s - %(name)s - %(levelname)s: %(message)s',
+                        filename= None, filemode='a',
+                        datefmt="%H:%M:%S", # "%Y-%m-%d %H:%M:%S",
+    )
+
+    class CustomFormatter(logging.Formatter):
+        def format(self, record):
+            record.levelname = record.levelname[:4]
+            record.pathname = record.pathname.replace(os.getcwd(), '.')
+            return super().format(record)
+
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(CustomFormatter(
+            '%(asctime)s - \33[32m%(name)s - %(levelname)s:\33[0m %(message)s' \
+            ' at %(funcName)s() %(pathname)s:%(lineno)d',
+            datefmt="%H:%M:%S"))
+
 # def static_var(varname, value):
 #     def decorate(func):
 #         setattr(func, varname, value)
