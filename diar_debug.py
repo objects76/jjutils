@@ -273,20 +273,22 @@ class VlcPlayer:
             if len(self.play_started) > 5: self.play_started.pop(0)
             self.play_started.append(start_sec)
 
-            for ssec, esec, sec_type in ranges:
+            for start_sec, end_sec, sec_type in ranges:
                 if self.stop_play: break
-                self.vlcp.set_time(int(ssec * 1000))
-                self.end_ms = int(esec * 1000)
+                self.vlcp.set_time(int(start_sec * 1000))
+                self.end_ms = int(end_sec * 1000)
 
                 fad_out = sec_type == 's.'
                 fad_in = sec_type == 'e.'
-                self.audio.play(ssec, -1 if self.play_to_end else esec , use_beep= sec_type != 's.', fade_out=fad_out, fade_in=fad_in)
+                self.audio.play(start_sec, -1 if self.play_to_end else end_sec , use_beep= sec_type != 's.', fade_out=fad_out, fade_in=fad_in)
 
                 while self.stop_play == False and self.audio.play_obj.is_playing():
-                    # update text
+                    # update text(time remained or current position)
+                    current_sec = self.current_ms() / 1000
+                    remained_sec = int(self.remained_ms()/1000)
                     self.vlcp.video_set_marquee_string(
                         vlc.VideoMarqueeOption.Text,
-                        self.text + f'\n: {sec_type}{int(self.remained_ms()/1000)} sec remained')
+                        self.text + f'\n: {sec_type}: cur={current_sec:.1f}, remained={remained_sec}')
                     await asyncio.sleep(0.3) # update text.
                 self.audio.stop()
             # for
@@ -313,6 +315,8 @@ class VlcPlayer:
     #     return self.remained_ms() > 0
     def remained_ms(self):
         return self.end_ms - self.vlcp.get_time()
+    def current_ms(self):
+        return self.vlcp.get_time()
 
     def forward(self, sec:float):
         if self.vlcp.get_state() == vlc.State.Playing:
@@ -364,6 +368,19 @@ import hashlib
 import shelve
 
 class HFWhisper:
+
+    _mp4file = None
+    _whisper = None
+    @staticmethod
+    def transcribe_(mp4file, start_sec, end_sec, *, language):
+        self = HFWhisper
+        if self._mp4file != mp4file:
+            self._whisper = HFWhisper(mp4file)
+            self._mp4file = mp4file
+
+        return self._whisper.transcribe(start_sec, end_sec, language=language)
+
+
     _pipe = None
     cache = shelve.open('./testdata/cache/whisper.shelve')
 
