@@ -367,18 +367,21 @@ from jjutils.diar_debug import AudioChunk
 import hashlib
 import shelve
 
+
+
+
 class HFWhisper:
 
     _mp4file = None
     _whisper = None
     @staticmethod
-    def transcribe_(mp4file, start_sec, end_sec, *, language):
+    def transcribe_(mp4file, start_sec, end_sec, *, language,force_update=False):
         self = HFWhisper
         if self._mp4file != mp4file:
             self._whisper = HFWhisper(mp4file)
             self._mp4file = mp4file
 
-        return self._whisper.transcribe(start_sec, end_sec, language=language)
+        return self._whisper.transcribe(start_sec, end_sec, language=language,force_update=force_update)
 
 
     _pipe = None
@@ -417,25 +420,31 @@ class HFWhisper:
     def play(self, start_sec, end_sec):
         self.audio2.play(start_sec, end_sec)
 
-    def transcribe(self, start_sec, end_sec, *, language='ja', force_update=False, play=False) -> dict:
+    def transcribe(self, start_sec, end_sec, *, language, force_update=False, play=False) -> dict:
         clip = self.audio2.data(start_sec, end_sec)
         key = hashlib.sha256(clip).hexdigest()
         if play:
             self.play_obj = simpleaudio.play_buffer(clip, 1, 2, 16_000)
 
         if key not in HFWhisper.cache or force_update:
-            clip = np.frombuffer(clip, np.int16).flatten() / 32768.0
+            clip_norm = np.frombuffer(clip, np.int16).flatten() / 32768.0
 
-            result = HFWhisper._pipe(clip, return_timestamps=False,
+            result = HFWhisper._pipe(clip_norm, return_timestamps=False,
                             generate_kwargs = {
                                 "language": f"<|{language}|>",
                                 "task":"transcribe"})
+
             HFWhisper.cache[key] = result
 
         result = HFWhisper.cache[key]
         for chunk in result.get('chunks', []):
             chunk['timestamp'] = tuple(round(x + start_sec,3) for x in chunk['timestamp'])
 
+        class WaveObj:
+            def __init__(self, clip): self.clip = clip
+            def play(self): return simpleaudio.play_buffer(self.clip, 1, 2, 16_000)
+
+        result['audio'] = WaveObj(clip)
         return result
 
 

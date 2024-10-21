@@ -12,8 +12,6 @@ class text_color:
     def all(): return (text_color(clr) for clr in [*range(30,38), 90])
 # black,red,green,yellow,blue,magenta,cyan,white,gray = text_color.all()
 
-black,red,green,yellow,blue,magenta,cyan,white,gray = text_color.all()
-
 # https://stackabuse.com/how-to-print-colored-text-in-python/
 def clr256(fg,bg):
     fgclr = f"\033[38;5;{fg}m" if fg>=0 else ''
