@@ -39,7 +39,7 @@ def set_default_logger():
 
     for handler in logging.getLogger().handlers:
         handler.setFormatter(CustomFormatter(
-            '%(asctime)s - \33[32m%(name)s - %(levelname)s:\33[0m %(message)s' \
+            '%(asctime)s - \33[32m%(name)s - %(levelname)s:\33[0m %(message)s'
             ' at %(funcName)s() %(pathname)s:%(lineno)d',
             datefmt="%H:%M:%S"))
 
@@ -48,8 +48,6 @@ def set_default_logger():
 #         setattr(func, varname, value)
 #         return func
 #     return decorate
-
-#
 #
 #
 # def dump_packed(rawdata_path, printout=False):
