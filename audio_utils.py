@@ -212,8 +212,9 @@ if __name__ == '__main__':
 # %%
 from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleaudio
+from pyannote.core import Segment
 
-def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.0, start_end_notifier = False):
+def play_audio(file_path: str, *, ranges: list[(float,float)]|list[Segment], speed: float = 1.0, start_end_notifier = False):
     # Load the full audio file
     audio = AudioSegment.from_file(file_path)
 
@@ -223,13 +224,15 @@ def play_audio(file_path: str, *, ranges: list[(float,float)], speed: float = 1.
         beep_volume = -20  # reduce the beep volume in dB
         beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
         beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
+        mute = AudioSegment.silent(duration=800)
+
 
     segments = []
     for (start, end) in ranges:
         # Extract the specific range (times are in milliseconds)
         segment = audio[start * 1000:end * 1000]
         if start_end_notifier:
-            segment = beep_start + segment + beep_end
+            segment = beep_start + segment + beep_end + mute
 
         # Speed up the segment
         if speed != 1.0:

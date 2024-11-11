@@ -32,16 +32,27 @@ def set_default_logger():
     )
 
     class CustomFormatter(logging.Formatter):
+        COLORS = {
+            logging.DEBUG: "\33[37m",    # White
+            logging.INFO: "\33[32m",     # Green
+            logging.WARNING: "\33[33m",  # Yellow foreground
+            logging.ERROR: "\33[31m",    # Red foreground
+            logging.CRITICAL: "\33[41m", # Red background
+        }
+
         def format(self, record):
             record.levelname = record.levelname[:4]
             record.pathname = record.pathname.replace(os.getcwd(), '.')
+            record.color_code = self.COLORS.get(record.levelno, "")
+            record.reset_code = "\33[0m"
             return super().format(record)
 
     for handler in logging.getLogger().handlers:
         handler.setFormatter(CustomFormatter(
-            '%(asctime)s - \33[32m%(name)s - %(levelname)s:\33[0m %(message)s'
-            ' at %(funcName)s() %(pathname)s:%(lineno)d',
-            datefmt="%H:%M:%S"))
+            '%(asctime)s - %(name)s - %(color_code)s%(levelname)s%(reset_code)s: '
+            '%(message)s at %(funcName)s() %(pathname)s:%(lineno)d',
+            datefmt="%H:%M:%S"
+        ))
 
 # def static_var(varname, value):
 #     def decorate(func):
