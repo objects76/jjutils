@@ -213,8 +213,13 @@ if __name__ == '__main__':
 from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleaudio
 from pyannote.core import Segment
+import time
 
-def play_audio(file_path: str, *, ranges: list[(float,float)]|list[Segment], speed: float = 1.0, start_end_notifier = False):
+def play_audio(file_path: str,
+               *,
+               ranges: list[(float,float)]|list[Segment],
+               speed: float = 1.0,
+               start_end_notifier = False):
     # Load the full audio file
     audio = AudioSegment.from_file(file_path)
 
@@ -247,7 +252,6 @@ def play_audio(file_path: str, *, ranges: list[(float,float)]|list[Segment], spe
 
     # Play each segment
     n_total = len(segments)
-
     for i, (segment, (start,end)) in enumerate(zip(segments, ranges), start=1):
         # Convert segment to raw audio data for playback
         # print(f'{start:.1f} ~ {end.1f}: {end-start:.1f}sec')
@@ -255,10 +259,15 @@ def play_audio(file_path: str, *, ranges: list[(float,float)]|list[Segment], spe
         wave_obj = simpleaudio.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
-        update_display(f'> {start} ~ {end}, {i}/{n_total}', display_id=handle.display_id)
+        update_display(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}', display_id=handle.display_id)
         if len(ranges) == 1:
             return play_obj
-        play_obj.wait_done()# play_obj.is_playing
+
+        while play_obj.is_playing():
+            time.sleep(0.05)
+
+def stop_plays():
+    simpleaudio.stop_all()
 
 #%%
 import subprocess
