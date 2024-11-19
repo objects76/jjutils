@@ -1,5 +1,6 @@
 
 #%% - m3u
+from typing import cast
 import sys, os, re
 if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
@@ -162,7 +163,7 @@ def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_ty
     audio_file = Path(outdir) / Path(audio_file).name
 
     if not Path(audio_file).exists() or False:
-        Path(outdir).mkdir(exist_ok=1)
+        Path(outdir).mkdir(exist_ok=True)
         if audio_type == 'wav':
             # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
             # !ffmpeg -i testdata/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 testdata/ntt.meeting_16k.wav
@@ -189,26 +190,31 @@ def replace_mp4_audio(mp4file, audioin, mp4output):
     subprocess.run(cmds.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
+def audio2mp4(wav_path, out_path):
+    assert Path(wav_path).exists()
+    if Path(out_path).exists(): return
+    jpg_path = 'testdata/1280x720-bg.jpg'
+    FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+    cmd = f"{FFMPEG} -i {wav_path} -loop 1 -i {jpg_path} -c:v libx264 -c:a aac -b:a 192k -shortest {out_path}"
+    print(cmd)
+    subprocess.run(cmd.split(), check=True)
 
-if __name__ == '__main__':
-    mp4file = 'testdata/ntt.meeting.mp4'
-    get_audio(mp4file, 720, 1500, 'wav')
+
 
 
 # %%
 import re
-def get_segment(from_srt:Path):
+def get_segment_from_srt(from_srt:Path):
     if from_srt:
         with open(from_srt) as fp: srt = fp.read()
         matches = re.findall(r"([\d:,]+) --> ([\d:,]+)\n([^\n]+)", srt, re.M)
-        with open(from_srt.replace('.srt', '.seg'), 'w') as fp:
+        segfile_path = str(from_srt).replace('.srt', '.seg')
+        with open(segfile_path, 'w') as fp:
             fp.write('start\tend\text\n')
             for m in matches:
                 s,e,t = m
                 fp.write(f"{s}\t{e}\t{t}\n")
 
-if __name__ == '__main__':
-    get_segment('testdata/ntt.meeting.srt')
 # %%
 from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleaudio
@@ -217,7 +223,7 @@ import time
 
 def play_audio(file_path: str,
                *,
-               ranges: list[(float,float)]|list[Segment],
+               ranges: list[ tuple[float,float] ]| list[Segment],
                speed: float = 1.0,
                start_end_notifier = False):
     # Load the full audio file
@@ -247,8 +253,8 @@ def play_audio(file_path: str,
 
         segments.append(segment)
 
-    from IPython.display import display, update_display
-    handle = display('', display_id=True)
+    from IPython.display import display, update_display, DisplayHandle
+    handle = cast(DisplayHandle, display('', display_id=True))
 
     # Play each segment
     n_total = len(segments)
@@ -331,3 +337,9 @@ def play_segment(segment:AudioSegment, speed:float=1.0):
 # trim audio with ffmpeg
 #    ffmpeg -i testdata/jp.zoom-4person.mp4 -ss 00:01:00 -t 00:30:00 -c copy testdata/jp.zoom-4person-trimmed.mp4
 #    ffmpeg -i testdata/jp.zoom-4person.mp4 -ss 00:31:00  -c copy testdata/jp.zoom-4person-trimmed2.mp4
+
+
+
+if __name__ == '__main__':
+    mp4file = 'testdata/ntt.meeting.mp4'
+    get_audio(mp4file, start_time=720, end_time=1500, audio_type='wav')

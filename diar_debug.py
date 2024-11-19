@@ -489,6 +489,7 @@ def translate(text_ja, force_update = False):
 #
 #
 #
+from typing import cast, Iterator
 from pathlib import Path
 from pyannote.database.util import load_rttm
 from IPython.display import display, update_display
@@ -533,7 +534,11 @@ class DebugDiarUI:
     @singledispatchmethod
     def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
         self.rawsegs = []
-        for turn, _, speaker_tag in anno.itertracks(yield_label=True):
+        iter_tracks = cast(
+            Iterator[tuple[Segment, str, str]],
+            anno.itertracks(yield_label=True))
+
+        for turn, _, speaker_tag in iter_tracks:
             if turn.end - turn.start > min_sec:
                 self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
         self.anno = anno
@@ -796,7 +801,7 @@ class DebugDiarUI:
                 update_display( self.anno , display_id=self.disp_id)
             else:
                 anno = self.anno.label_support(speaker)
-                anno.title = speaker
+                # anno.title = speaker
                 update_display( anno, display_id=self.disp_id)
 
         speakers = set( seg.speaker_tag for seg in self.rawsegs)
