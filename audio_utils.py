@@ -225,7 +225,7 @@ def play_audio(file_path: str,
                *,
                ranges: list[ tuple[float,float] ]| list[Segment],
                speed: float = 1.0,
-               start_end_notifier = False):
+               start_end_notifier = True):
     # Load the full audio file
     audio = AudioSegment.from_file(file_path)
 
@@ -339,7 +339,63 @@ def play_segment(segment:AudioSegment, speed:float=1.0):
 #    ffmpeg -i testdata/jp.zoom-4person.mp4 -ss 00:31:00  -c copy testdata/jp.zoom-4person-trimmed2.mp4
 
 
+import numpy as np
+import subprocess
+import torch
 
-if __name__ == '__main__':
-    mp4file = 'testdata/ntt.meeting.mp4'
-    get_audio(mp4file, start_time=720, end_time=1500, audio_type='wav')
+def load_audio(media_input: str) -> torch.Tensor:
+    """
+    오디오 파일을 로드하고 정규화된 파형을 반환합니다.
+    Returns:
+        torch.Tensor: 정규화된 오디오 파형 (1 x N)
+    """
+    FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+    try:
+        cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar 16000 -"
+        out:bytes = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
+        normed_waveform = np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+        return torch.from_numpy(normed_waveform[None, :]) # [-1,1]
+
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
+
+
+import torch
+import numpy as np
+import simpleaudio
+from pyannote.core import Segment, Timeline, Annotation
+
+def play_tensor(audio_tensor:torch.Tensor, nsec:int=999):
+    audio_data = audio_tensor.squeeze().numpy()
+    audio_data = audio_data[:16000*nsec]
+    assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1
+    assert audio_data.ndim == 1
+    audio_data = (audio_data * 32767).astype(np.int16) # normalized float -> int16
+
+    audio_bytes = audio_data.tobytes()
+    play_obj = simpleaudio.play_buffer(audio_bytes, num_channels=1, bytes_per_sample=2, sample_rate=16000)
+    play_obj.wait_done()
+
+
+def get_audio_data(audio_path, chunk:Segment, duration:float=0) -> torch.Tensor:
+    self = get_audio_data
+    if self._audio_data.get("audio_path", "") != audio_path:
+        self._audio_data["audio_tensor"] = load_audio(audio_path)
+        self._audio_data["audio_path"] = audio_path
+
+    start_sec, end_sec=chunk
+    end_sec = min(end_sec, start_sec+duration or chunk.duration)
+
+    data = self._audio_data["audio_tensor"]
+    start_idx = int(start_sec * 16000)
+    end_idx = int((end_sec)*16000)
+    waveform = data[start_idx:end_idx]
+    return waveform.unsqueeze(0) # (1,1,n_signal)
+get_audio_data._audio_data = {}
+
+
+#
+# if __name__ == '__main__':
+#     mp4file = 'testdata/ntt.meeting.mp4'
+#     get_audio(mp4file, start_time=720, end_time=1500, audio_type='wav')

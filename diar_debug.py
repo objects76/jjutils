@@ -1,5 +1,6 @@
 import asyncio, os
 import vlc # !pip install python-vlc, https://www.olivieraubert.net/vlc/python-ctypes/doc/
+import pyaudio # !pip install PyAudio
 import gc, time
 import re
 from .diar_utils import to_hhmmss
@@ -10,7 +11,7 @@ import subprocess, numpy as np
 import pydub
 
 from pyannote.core import notebook
-import openai
+import openai # pip install openai
 
 _openai = openai.OpenAI()
 os.makedirs('./testdata/cache', exist_ok=True)
@@ -94,7 +95,7 @@ class AudioChunk: # for more fine-controlling(ms).
 
 
     @staticmethod
-    def load_audio(media_input: str, *, sr: int = 16000):
+    def load_audio(media_input: str, *, sr: int = 16000) -> np.ndarray:
         FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
         try:
             cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
@@ -104,79 +105,78 @@ class AudioChunk: # for more fine-controlling(ms).
             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
 
 
-import pyaudio # pip install PyAudio
 
-FRAME_1ms = 16
-class PyAudioPlayer:
-    inst = None
-
-    def __init__(self, filename) -> None:
-        self.curtime = 0
-
-        self.p = pyaudio.PyAudio()
-
-        self.stream = self.p.open(
-            format= self.p.get_format_from_width(2),
-            channels=1,
-            rate= FRAME_1ms*1000,
-            start=False,
-            frames_per_buffer = FRAME_1ms*5,
-            output=True, input=False,
-            stream_callback= lambda *args: self.callback(*args))
-
-        self.waves = PyAudioPlayer.load_audio(filename)
-        self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
-        self.end_ms = 0
-        PyAudioPlayer.inst = self
-        pass
-
-
-    def __del__(self): self.close()
-
-    def close(self):
-        self.stream.close()
-        self.p.terminate()
-        PyAudioPlayer.inst = None
-
-    def callback(self, in_data, frame_count, time_info, status):
-
-        end_frame = self.cur_frame+frame_count
-        data = self.wave_chunk[self.cur_frame*2:end_frame*2]
-        self.cur_frame += frame_count
-        return (data, pyaudio.paContinue)
-
-    def play(self, start_sec, end_sec, use_beep=True):
-        # print(f"play: {start_sec}~{end_sec}")
-        cur_frame = int(FRAME_1ms * 1000 * start_sec)
-        end_frame = int(FRAME_1ms * 1000 * end_sec)
-
-        self.wave_chunk = self.waves[cur_frame*2: end_frame*2]
-        if use_beep:
-            self.wave_chunk += self.beep
-
-        self.cur_frame = 0
-
-        self.stream.stop_stream()
-        self.stream.start_stream()
-
-    def stop(self):
-        self.stream.stop_stream()
-
-    # def get_time(self):
-    #     return self.start_sec + (self.cur_frame / FRAME_1ms / 1000.)
-
-    def forward(self, sec:float):
-        self.cur_frame += int(FRAME_1ms * 1000 * sec)
-
-    @staticmethod
-    def load_audio(media_input: str, *, sr: int = 16000):
-        FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
-        try:
-            cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
-            out = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
-            return np.frombuffer(out, np.int16).flatten().tobytes()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+# FRAME_1ms = 16
+# class PyAudioPlayer:
+#     inst = None
+#
+#     def __init__(self, filename) -> None:
+#         self.curtime = 0
+#
+#         self.p = pyaudio.PyAudio()
+#
+#         self.stream = self.p.open(
+#             format= self.p.get_format_from_width(2),
+#             channels=1,
+#             rate= FRAME_1ms*1000,
+#             start=False,
+#             frames_per_buffer = FRAME_1ms*5,
+#             output=True, input=False,
+#             stream_callback= lambda *args: self.callback(*args))
+#
+#         self.waves = PyAudioPlayer.load_audio(filename)
+#         self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
+#         self.end_ms = 0
+#         PyAudioPlayer.inst = self
+#         pass
+#
+#
+#     def __del__(self): self.close()
+#
+#     def close(self):
+#         self.stream.close()
+#         self.p.terminate()
+#         PyAudioPlayer.inst = None
+#
+#     def callback(self, in_data, frame_count, time_info, status):
+#
+#         end_frame = self.cur_frame+frame_count
+#         data = self.wave_chunk[self.cur_frame*2:end_frame*2]
+#         self.cur_frame += frame_count
+#         return (data, pyaudio.paContinue)
+#
+#     def play(self, start_sec, end_sec, use_beep=True):
+#         # print(f"play: {start_sec}~{end_sec}")
+#         cur_frame = int(FRAME_1ms * 1000 * start_sec)
+#         end_frame = int(FRAME_1ms * 1000 * end_sec)
+#
+#         self.wave_chunk = self.waves[cur_frame*2: end_frame*2]
+#         if use_beep:
+#             self.wave_chunk += self.beep
+#
+#         self.cur_frame = 0
+#
+#         self.stream.stop_stream()
+#         self.stream.start_stream()
+#
+#     def stop(self):
+#         self.stream.stop_stream()
+#
+#     # def get_time(self):
+#     #     return self.start_sec + (self.cur_frame / FRAME_1ms / 1000.)
+#
+#     def forward(self, sec:float):
+#         self.cur_frame += int(FRAME_1ms * 1000 * sec)
+#
+#     @staticmethod
+#     def load_audio(media_input: str, *, sr: int = 16000):
+#         FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+#         try:
+#             cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
+#             out = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
+#             return np.frombuffer(out, np.int16).flatten().tobytes()
+#         except subprocess.CalledProcessError as e:
+#             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
 
 
 #
@@ -689,8 +689,14 @@ class DebugDiarUI:
                     # print(text_ja, '\n', text_ko)
 
                 tag = seg.speaker_tag
-                range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
-                details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
+                range = (
+                    f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} /"
+                    f" <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+                )
+                details.value = (
+                    f"Range= {range}     <span style='color: red;'>{tag}</span><br>"
+                    f"  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
+                )
                 return None
         except RuntimeError as ex:
             print('a_transcribe:', ex)

@@ -15,6 +15,13 @@ blue = text_color(94)
 # import sys, os
 # if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
+def typeinfo(obj, short=False):
+    s = str(type(obj))
+    if s.startswith("<class '"): s = s[8:-2]
+    if short:
+        return s.split(".")[-1]
+    return s
+
 def static_vars(**kwargs):
     def decorate(func):
         for k in kwargs:
@@ -33,10 +40,10 @@ def set_default_logger():
 
     class CustomFormatter(logging.Formatter):
         COLORS = {
-            logging.DEBUG: "\33[37m",    # White
-            logging.INFO: "\33[32m",     # Green
-            logging.WARNING: "\33[33m",  # Yellow foreground
-            logging.ERROR: "\33[31m",    # Red foreground
+            logging.DEBUG: "\33[47m",    # White
+            logging.INFO: "\33[42m",     # Green
+            logging.WARNING: "\33[43m",  # Yellow foreground
+            logging.ERROR: "\33[41m",    # Red foreground
             logging.CRITICAL: "\33[41m", # Red background
         }
 
