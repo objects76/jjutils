@@ -49,17 +49,25 @@ def set_default_logger():
 
         def format(self, record):
             record.levelname = record.levelname[:4]
-            record.pathname = record.pathname.replace(os.getcwd(), '.')
+            if record.pathname.startswith("/tmp/ipykernel_"):
+                record.pathname = "notebook"
+            else:
+                record.pathname = record.pathname.replace(os.getcwd(), '.')
             record.color_code = self.COLORS.get(record.levelno, "")
             record.reset_code = "\33[0m"
+            record.name = record.name[-15:]
+
             return super().format(record)
 
     for handler in logging.getLogger().handlers:
         handler.setFormatter(CustomFormatter(
-            '%(asctime)s - %(name)s - %(color_code)s%(levelname)s%(reset_code)s: '
+            # '%(asctime)s - '
+            '%(name)s - %(color_code)s%(levelname)s%(reset_code)s: '
             '%(message)s at %(funcName)s() %(pathname)s:%(lineno)d',
             datefmt="%H:%M:%S"
         ))
+
+
 
 # def static_var(varname, value):
 #     def decorate(func):
@@ -92,13 +100,13 @@ def set_default_logger():
 #         npy_data = rawdata_path
 #     elif ".npyio." in str(type(rawdata_path)):
 #         npy_data = rawdata_path.item()
-
+#
 #     if printout:
 #         def print_item(k,v):
 #             if hasattr(v,'shape'):
 #                 typestr = str(type(v))
 #                 if 'scipy.sparse' in typestr: v = np.array(v.todense()) # SciPy sparse matrix => numpy matrix.
-
+#
 #                 print(f"\33[33m{k}: shape={v.shape}, dtype={v.dtype}, {typestr}\33[0m")
 #                 head = str(v)[:100]
 #                 head = head.replace('\n', '\n      ')
@@ -114,7 +122,6 @@ def set_default_logger():
 #         else:
 #             filename = os.path.basename(rawdata_path)
 #             print_item(filename, npy_data)
-
 #     return npy_data
 
 #

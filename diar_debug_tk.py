@@ -106,79 +106,6 @@ class AudioChunk: # for more fine-controlling(ms).
 
 
 
-# FRAME_1ms = 16
-# class PyAudioPlayer:
-#     inst = None
-#
-#     def __init__(self, filename) -> None:
-#         self.curtime = 0
-#
-#         self.p = pyaudio.PyAudio()
-#
-#         self.stream = self.p.open(
-#             format= self.p.get_format_from_width(2),
-#             channels=1,
-#             rate= FRAME_1ms*1000,
-#             start=False,
-#             frames_per_buffer = FRAME_1ms*5,
-#             output=True, input=False,
-#             stream_callback= lambda *args: self.callback(*args))
-#
-#         self.waves = PyAudioPlayer.load_audio(filename)
-#         self.beep = pydub.generators.Sine(1200).to_audio_segment(duration=30).apply_gain(-20).raw_data
-#         self.end_ms = 0
-#         PyAudioPlayer.inst = self
-#         pass
-#
-#
-#     def __del__(self): self.close()
-#
-#     def close(self):
-#         self.stream.close()
-#         self.p.terminate()
-#         PyAudioPlayer.inst = None
-#
-#     def callback(self, in_data, frame_count, time_info, status):
-#
-#         end_frame = self.cur_frame+frame_count
-#         data = self.wave_chunk[self.cur_frame*2:end_frame*2]
-#         self.cur_frame += frame_count
-#         return (data, pyaudio.paContinue)
-#
-#     def play(self, start_sec, end_sec, use_beep=True):
-#         # print(f"play: {start_sec}~{end_sec}")
-#         cur_frame = int(FRAME_1ms * 1000 * start_sec)
-#         end_frame = int(FRAME_1ms * 1000 * end_sec)
-#
-#         self.wave_chunk = self.waves[cur_frame*2: end_frame*2]
-#         if use_beep:
-#             self.wave_chunk += self.beep
-#
-#         self.cur_frame = 0
-#
-#         self.stream.stop_stream()
-#         self.stream.start_stream()
-#
-#     def stop(self):
-#         self.stream.stop_stream()
-#
-#     # def get_time(self):
-#     #     return self.start_sec + (self.cur_frame / FRAME_1ms / 1000.)
-#
-#     def forward(self, sec:float):
-#         self.cur_frame += int(FRAME_1ms * 1000 * sec)
-#
-#     @staticmethod
-#     def load_audio(media_input: str, *, sr: int = 16000):
-#         FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
-#         try:
-#             cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
-#             out = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
-#             return np.frombuffer(out, np.int16).flatten().tobytes()
-#         except subprocess.CalledProcessError as e:
-#             raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-
-
 #
 #
 #
@@ -451,12 +378,12 @@ class HFWhisper:
 #
 #
 #
-import openai
 import shelve
 import json
 
 @static_vars(cache = shelve.open('./testdata/cache/translate.shelve'))
 def translate(text_ja, force_update = False):
+    import openai
     if text_ja not in translate.cache or force_update:
         # print('openai called')
         user_msg = dict(role='user', content=(
@@ -501,16 +428,32 @@ from jjutils.diar_utils import (
 
 from pyannote.core import Annotation, Segment
 from collections import namedtuple
+import time
+import threading
+import asyncio
+from pathlib import Path
+from collections import namedtuple
+from typing import cast, Iterator
+
+import tkinter as tk
+from tkinter import ttk
+
+# Assuming these are defined elsewhere in your code
+# from pyannote.core import Annotation, Segment
+# from your_player_module import VlcPlayer
+# from your_transcription_module import HFWhisper, translate
+# from your_utils_module import to_hhmmss
 
 Speaker = namedtuple('Speaker', ['start_sec', 'end_sec', 'speaker_tag'])
+
 class DebugDiarUI:
     _player = None
-    def __init__(self, *, video_path = None, transcribe=False, offset=0) -> None:
+
+    def __init__(self, *, video_path=None, transcribe=False, offset=0) -> None:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
         self.speaker_order = dict()
-
         self.speaker_filter = None
         self.player = DebugDiarUI._player = VlcPlayer()
         if video_path:
@@ -521,6 +464,7 @@ class DebugDiarUI:
 
         self.transcribe = transcribe
         self.translate = self.transcribe and True
+        self.roi_widgets = None
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
@@ -528,11 +472,9 @@ class DebugDiarUI:
         self.video_path = video_path
 
         self.whisper = HFWhisper(video_path)
-        self.audio_language = 'ja' # 'ko', 'en'
+        self.audio_language = 'ja'  # 'ko', 'en'
 
-
-    @singledispatchmethod
-    def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
+    def set_segment(self, anno, *, start_sec=0, min_sec=0):
         self.rawsegs = []
         iter_tracks = cast(
             Iterator[tuple[Segment, str, str]],
@@ -540,30 +482,18 @@ class DebugDiarUI:
 
         for turn, _, speaker_tag in iter_tracks:
             if turn.end - turn.start > min_sec:
-                self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
+                self.rawsegs.append(Speaker(turn.start, turn.end, speaker_tag))
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
-        # find near segment.
+        # Find nearest segment.
         self.cur_segidx = 0
         for i, seg in enumerate(self.rawsegs):
-            if seg.start_sec > start_sec: break
+            if seg.start_sec > start_sec:
+                break
             self.cur_segidx = i
 
         self._setup_ui()
-
-    @set_segment.register
-    def _(self, anno_path:str, *, min_sec = 0):
-        if anno_path.endswith('.rttm'):
-            _, anno = load_rttm(anno_path).popitem()
-            self.set_segment(anno, min_sec=min_sec)
-        else:
-            assert False, f"invalid file format: {anno_path}"
-
-    # @set_segment.register
-    # def _(self, rawsegs:list[PklSegment], *, min_sec = 0):
-    #     self.rawsegs = [ Speaker(i.start_sec, i.end_sec, i.speaker_tag) for i in rawsegs if i.end_sec - i.start_sec > min_sec]
-    #     self._setup_ui()
 
     @staticmethod
     def is_speaker(tag):
@@ -594,73 +524,22 @@ class DebugDiarUI:
             if self.is_speaker(seg.speaker_tag):
                 tag = seg.speaker_tag
                 start, end = seg.start_sec, seg.end_sec
-                text_ja, text_ko = self.get_text(start,end)
-            scripts.append( dict(start=round(start,3), end=round(end,3), speaker=tag, text_ja=text_ja, text_ko=text_ko) )
+                text_ja, text_ko = self.get_text(start, end)
+            scripts.append(dict(start=round(start, 3), end=round(end, 3), speaker=tag, text_ja=text_ja, text_ko=text_ko))
         return dict(
-            media= str(self.video_path),
+            media=str(self.video_path),
             stt=type(self.whisper).__name__,
             segments=scripts)
 
-    async def aplay_all(self, segs, slider:widgets.IntSlider):
-        print('0. aplay_all done', self.is_playall)
-        try:
-            seg = segs[slider.value]
-            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
-
-            while not self.player.assure_play_started(seg.start_sec):
-                await asyncio.sleep(0.1)
-            # print('wait start', seg.start_sec)
-
-            while not self.player.assure_play_done(seg.start_sec):
-                await asyncio.sleep(0.1)
-            # print('wait done', seg.start_sec)
-
-
-            while slider.value < slider.max:
-                slider.value = slider.value + 1
-                start_sec = segs[slider.value].start_sec
-
-                while not self.player.assure_play_started(start_sec):
-                    await asyncio.sleep(0.1)
-                # print('wait start', start_sec)
-
-                while not self.player.assure_play_done(start_sec):
-                    await asyncio.sleep(0.1)
-                # print('wait done', start_sec)
-
-                if not self.is_playall: break
-                if self.inter_delay> 0:
-                    await asyncio.sleep(self.inter_delay) # interval between segments
-
-        except AttributeError as ex:
-            print('aplay_all.ex:', ex)
-            pass
-        print('1. aplay_all done', self.is_playall)
-        self.is_playall = False
-
-    def on_play_all(self, btn, segs, slider:widgets.IntSlider):
-        self.is_playall = not self.is_playall
-        if self.is_playall:
-            btn.icon = 'pause'
-            return asyncio.create_task(self.aplay_all(segs, slider))
-        else:
-            btn.icon = 'play'
-            self.player.stop()
-            return
-
     def _play(self, segment_speaker, start, end):
-        from pyannote.core import notebook
         if self.speaker_filter != 'OVERLAPPED' and segment_speaker == 'OVERLAPPED':
             return
-        # self.speaker_filter # speaker filter value in combobox
 
         self.player.play(start, end)
         self.player.draw_text(
-            f"{segment_speaker}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
-            # clr_index= self.speaker_order.get(tag, -1)
-            rgba= notebook[segment_speaker][2]
-            )
-        # if tag != 'INTER':
+            f"{segment_speaker}\ndur={round(end - start, 3)} sec, after={round(start - self.prev_end, 3)}",
+            rgba=(255, 0, 0, 128)  # Placeholder for color
+        )
         self.prev_end = end
 
     def get_text(self, start, end):
@@ -672,216 +551,222 @@ class DebugDiarUI:
             text_ko = ''
         return (text_ja, text_ko)
 
-    async def a_transcribe(self, seg, details):
-        import concurrent.futures
-        try:
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                dur = seg.end_sec - seg.start_sec
+    def a_transcribe(self, seg):
+        dur = seg.end_sec - seg.start_sec
+        text_ja = text_ko = ''
+        if self.is_speaker(seg.speaker_tag):
+            text_ja, text_ko = self.get_text(seg.start_sec, seg.end_sec)
+            if len(text_ja) > 85 and self.player.play_boundary:
+                text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+            if len(text_ko) > 85 and self.player.play_boundary:
+                text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
 
-                text_ja = text_ko = ''
-                if self.is_speaker(seg.speaker_tag):
-                    text_ja, text_ko = await loop.run_in_executor(
-                        executor,
-                        self.get_text, seg.start_sec,seg.end_sec)
-                    if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
-                    if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
-                    # print(text_ja, '\n', text_ko)
-
-                tag = seg.speaker_tag
-                range = (
-                    f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} /"
-                    f" <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
-                )
-                details.value = (
-                    f"Range= {range}     <span style='color: red;'>{tag}</span><br>"
-                    f"  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
-                )
-                return None
-        except RuntimeError as ex:
-            print('a_transcribe:', ex)
+        tag = seg.speaker_tag
+        range_text = (
+            f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} /"
+            f" {seg.start_sec:.3f} ~ {seg.end_sec:.3f} ({dur:.3f})"
+        )
+        details_text = (
+            f"Range= {range_text}     [{tag}]\n"
+            f"  {type(self.whisper).__name__}: {text_ja}\n  > {text_ko}"
+        )
+        # Update the UI in the main thread
+        self.details_label.config(text=details_text)
 
     def _interact_video(self, segs, label='', ui=None):
-
         count = len(segs)
-        # details = widgets.Label(value=f'')
-        details = widgets.HTML(value=f'')
 
-        def fn_slider(idx):
-            # self.is_playall = False
+        # Create a new window or frame for the UI
+        if ui is None:
+            ui = tk.Toplevel(self.root)
+            ui.title(label)
+            self.ui = ui
+        else:
+            # Clear existing UI elements
+            for widget in ui.winfo_children():
+                widget.destroy()
 
-            seg = segs[idx]
-            dur = seg.end_sec - seg.start_sec
-            range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+        # Title
+        title_label = tk.Label(ui, text=f'> {label}: count= {count}')
+        title_label.pack()
 
-            text_ja = text_ko = ''
-            if self.transcribe and not (
-                seg.speaker_tag.startswith('INTER') and seg.speaker_tag.endswith('OVERLAPPED')
-                ):
-                asyncio.create_task(self.a_transcribe(seg, details))
-                text_ja = 'transcribing...'
+        # Slider
+        self.slider_var = tk.IntVar(value=self.cur_segidx)
+        slider = tk.Scale(ui, from_=0, to=max(0, len(segs) - 1), orient='horizontal', variable=self.slider_var, command=self.on_slider_change)
+        slider.pack()
 
-                # if dur > 10:
-                #     text_ja = 'transcribing...'
-                #     text_ko = ' '
-                #     details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
+        # Buttons
+        btn_prev = tk.Button(ui, text='Prev', command=lambda: self.slider_value(self.slider_var.get() - 1))
+        btn_next = tk.Button(ui, text='Next', command=lambda: self.slider_value(self.slider_var.get() + 1))
+        replay_btn = tk.Button(ui, text='Replay', command=lambda: self.fn_slider(self.slider_var.get()))
+        playall_btn = tk.Button(ui, text='Play All', command=lambda: self.on_play_all(playall_btn, segs, self.slider_var))
 
-                # if self.transcribe:
-                #     trans = self.whisper.transcribe(seg.start_sec, seg.end_sec)
-                #     text_ja = trans['text']
-                #     if len(text_ja) > 85: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+        btn_frame = tk.Frame(ui)
+        btn_frame.pack()
+        btn_prev.pack(in_=btn_frame, side='left')
+        btn_next.pack(in_=btn_frame, side='left')
+        replay_btn.pack(in_=btn_frame, side='left')
+        playall_btn.pack(in_=btn_frame, side='left')
 
-                # if len(text_ja) and self.translate:
-                #     if dur > 10:
-                #         text_ko = 'translating...'
-                #         details.value = f"Range= {range}     <span style='color: red;'>[{seg.speaker_tag}]</span><br>  {text_ja}<br>  {text_ko}"
-                #     text_ko = translate(text_ja)
-                #     if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+        # Details label
+        self.details_label = tk.Label(ui, text='', justify='left', anchor='w')
+        self.details_label.pack()
 
-            tag = seg.speaker_tag
-            details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {text_ja}<br>  {text_ko}"
+        # Set up variables
+        self.segs = segs
+        self.slider = slider
 
-            # if self.vlc: self.vlc.stop()
-            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
-
-        title = widgets.Label(value=f'> {label}: {count= }',
-                            style={'background': 'green', 'text_color': 'white'},
-                            layout=widgets.Layout(width='400px'),)
-
-        # [0, max]
-        slider = widgets.IntSlider(
-            value=self.cur_segidx,
-            description=f'clips: ',
-            min=0, max= max(0, len(segs)-1), step=1,
-            continuous_update=False,
-            style={'description_width': 'initial'},
-            layout=widgets.Layout(width='400px'),
-            )
-        slider.observe(lambda x: fn_slider(x['new']), names='value', type='change')
-        def slider_value(val:int):
-            if 0<= val < count: slider.value = val
-
-        btn_prev = widgets.Button(description='',  icon='arrow-left', tooltip='' )
-        btn_next = widgets.Button(description='', icon='arrow-right', tooltip='' )
-        replay_btn = widgets.Button(description='', icon='repeat', tooltip='' )
-        playall_btn = widgets.Button(description='', icon='play', tooltip='' )
-
-        replay_btn.on_click(lambda btn: fn_slider(slider.value))
-        playall_btn.on_click(lambda btn: self.on_play_all(btn, segs, slider))
-        btn_prev.on_click(lambda b: slider_value(slider.value-1))
-        btn_next.on_click(lambda b: slider_value(slider.value+1))
-        if ui: fn_slider(0) # play initial
-
-        hbox = widgets.HBox([replay_btn, playall_btn, btn_prev, btn_next])
-        vbox = widgets.VBox([title, slider, hbox, details, ])
-        if ui == None:
-            ui = vbox
-            display(ui, display_id='11')
-
-        ui.children = vbox.children
         return ui
 
+    def fn_slider(self, idx):
+        seg = self.segs[idx]
+        dur = seg.end_sec - seg.start_sec
+        start_hhmmss = to_hhmmss(seg.start_sec)
+        end_hhmmss = to_hhmmss(seg.end_sec)
+        range_text = f"{start_hhmmss} ~ {end_hhmmss} / {seg.start_sec:.3f} ~ {seg.end_sec:.3f} ({dur:.3f})"
+
+        text_ja = text_ko = ''
+        if self.transcribe and not (seg.speaker_tag.startswith('INTER') and seg.speaker_tag.endswith('OVERLAPPED')):
+            # Start transcription in a separate thread
+            threading.Thread(target=self.a_transcribe, args=(seg,)).start()
+            text_ja = 'transcribing...'
+
+        tag = seg.speaker_tag
+        self.details_label.config(text=f"Range= {range_text}     [{tag}]\n  {text_ja}\n  {text_ko}")
+
+        # Play the segment
+        self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+
+    def on_slider_change(self, value):
+        idx = int(value)
+        self.fn_slider(idx)
+
+    def slider_value(self, val: int):
+        if 0 <= val < len(self.segs):
+            self.slider_var.set(val)
+
+    def on_play_all(self, btn, segs, slider_var):
+        self.is_playall = not self.is_playall
+        if self.is_playall:
+            btn.config(text='Pause')
+            threading.Thread(target=self.play_all_segments, args=(segs, slider_var)).start()
+        else:
+            btn.config(text='Play All')
+            self.player.stop()
+
+    def play_all_segments(self, segs, slider_var):
+        try:
+            idx = slider_var.get()
+            while idx < len(segs):
+                seg = segs[idx]
+                self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+                while not self.player.assure_play_started(seg.start_sec):
+                    time.sleep(0.1)
+                while not self.player.assure_play_done(seg.start_sec):
+                    time.sleep(0.1)
+                if not self.is_playall:
+                    break
+                if self.inter_delay > 0:
+                    time.sleep(self.inter_delay)
+                idx += 1
+                slider_var.set(idx)
+        except Exception as ex:
+            print('play_all_segments exception:', ex)
+        finally:
+            self.is_playall = False
+            btn.config(text='Play All')
+
+    def on_checkbox_change(self):
+        self.player.play_to_end = self.play_to_end_var.get()
+        self.player.play_boundary = self.play_boundary_var.get()
+        self.transcribe = self.transcribe_var.get()
+        self.translate = self.translate_var.get()
+        if not self.transcribe:
+            # Disable translate checkbox
+            self.translate_var.set(False)
+            self.translate_checkbutton.config(state='disabled')
+        else:
+            self.translate_checkbutton.config(state='normal')
+
+    def select_speaker(self, event=None):
+        speaker = self.speaker_var.get()
+        self.speaker_filter = speaker
+
+        segs = self.rawsegs if speaker == 'AllSpeaker' else [item for item in self.rawsegs if item.speaker_tag == speaker]
+
+        # Check if roi_widgets exists
+        if hasattr(self, 'roi_widgets'):
+            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
+        else:
+            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}')
+
+    def select_inter_delay(self, event=None):
+        delay = self.inter_delay_var.get()
+        self.inter_delay = float(delay)
+
+    def on_close(self):
+        self.player.clear()
+        self.root.destroy()
 
     def _setup_ui(self):
         SPEAKER_ALL = 'AllSpeaker'
+        self.speaker_filter = SPEAKER_ALL
         self.roi_widgets = None
-        self.is_playall = False
 
-        self.speaker_filter == SPEAKER_ALL
-        self.disp_id = str(time.time())
-        display( self.anno, display_id=self.disp_id)
-        # update_display( self.anno , display_id=self.disp_id)
+        # Create the main window
+        self.root = tk.Tk()
+        self.root.title("Debug Diarization UI")
 
-        lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
-        lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
+        lbl_title = tk.Label(self.root, text=f"[ {self.video_path} ]")
+        lbl_title.pack()
 
-        def select_speaker(change):
-            speaker = change['new']
-            self.speaker_filter = speaker
-
-            segs = self.rawsegs if speaker == SPEAKER_ALL else [item for item in self.rawsegs if item.speaker_tag == speaker]
-            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
-            # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
-
-            if speaker == SPEAKER_ALL:
-                update_display( self.anno , display_id=self.disp_id)
-            else:
-                anno = self.anno.label_support(speaker)
-                # anno.title = speaker
-                update_display( anno, display_id=self.disp_id)
-
-        speakers = set( seg.speaker_tag for seg in self.rawsegs)
+        # Dropdown for selecting speaker
+        speakers = set(seg.speaker_tag for seg in self.rawsegs)
         speakers = [SPEAKER_ALL, *sorted(speakers)]
-        dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
-        dropdown.observe(select_speaker, names='value')
-        display(widgets.HBox([dropdown, lbl_title]))
-        select_speaker({"new": SPEAKER_ALL})
+        self.speaker_var = tk.StringVar(value=SPEAKER_ALL)
+        dropdown_label = tk.Label(self.root, text='Speaker:')
+        dropdown_label.pack()
+        dropdown = ttk.Combobox(self.root, textvariable=self.speaker_var, values=speakers)
+        dropdown.pack()
+        dropdown.bind("<<ComboboxSelected>>", self.select_speaker)
 
-        # btn_ff5 = widgets.Button(description='+ 5sec')
-        # btn_ff10 = widgets.Button(description='+ 10sec')
-        # btn_ff5.on_click(lambda b: (self.player.forward(5)))
-        # btn_ff10.on_click(lambda b: (self.player.forward(10)))
-        # display(widgets.HBox([btn_ff5, btn_ff10]))
+        # Initialize speaker selection
+        self.select_speaker()
 
-        # self._interact_video(self.segs_inter, f'diar: inter')
+        # Checkbuttons for various options
+        self.play_boundary_var = tk.BooleanVar(value=self.player.play_boundary)
+        cb_play_boundary = tk.Checkbutton(self.root, text='Play start/end only', variable=self.play_boundary_var, command=self.on_checkbox_change)
+        cb_play_boundary.pack()
 
-        self.player.play_boundary = True
-        cb_play_boundary = widgets.Checkbox(
-            value= self.player.play_boundary,
-            description='Play start/end only',
-            indent=False
-        )
-        cb_play_cont = widgets.Checkbox(
-            value= False,
-            description='Play to end',
-            indent=False
-        )
-        cb_transcribe = widgets.Checkbox(
-            value= self.transcribe,
-            description='Transcribe',
-            indent=False
-        )
-        cb_translate = widgets.Checkbox(
-            value= self.translate,
-            description='Translate',
-            indent=False,
-            disabled = not self.transcribe,
-        )
+        self.play_to_end_var = tk.BooleanVar(value=False)
+        cb_play_cont = tk.Checkbutton(self.root, text='Play to end', variable=self.play_to_end_var, command=self.on_checkbox_change)
+        cb_play_cont.pack()
 
-        def on_checkbox_change(change):
-            desc, value = change['owner'].description, change['new']
-            if desc == 'Play to end':
-                self.player.play_to_end = value
-            elif desc == 'Play start/end only':
-                self.player.play_boundary = value
+        self.transcribe_var = tk.BooleanVar(value=self.transcribe)
+        cb_transcribe = tk.Checkbutton(self.root, text='Transcribe', variable=self.transcribe_var, command=self.on_checkbox_change)
+        cb_transcribe.pack()
 
-            elif desc == 'Transcribe':
-                self.transcribe = value
-                cb_translate.disabled = (value == False)
-            elif desc == 'Translate':
-                self.translate = value
+        self.translate_var = tk.BooleanVar(value=self.translate)
+        self.translate_checkbutton = tk.Checkbutton(self.root, text='Translate', variable=self.translate_var, command=self.on_checkbox_change)
+        self.translate_checkbutton.pack()
+        if not self.transcribe:
+            self.translate_checkbutton.config(state='disabled')
 
-        cb_play_boundary.observe(on_checkbox_change, names='value')
-        cb_play_cont.observe(on_checkbox_change, names='value')
-        cb_transcribe.observe(on_checkbox_change, names='value')
-        cb_translate.observe(on_checkbox_change, names='value')
+        # Dropdown for inter delay
+        inter_delay_options = ['0.0', '0.5', '1.0', '1.5']
+        self.inter_delay_var = tk.StringVar(value=str(self.inter_delay))
+        inter_delay_label = tk.Label(self.root, text='Delay (sec):')
+        inter_delay_label.pack()
+        inter_delay_dropdown = ttk.Combobox(self.root, textvariable=self.inter_delay_var, values=inter_delay_options)
+        inter_delay_dropdown.pack()
+        inter_delay_dropdown.bind("<<ComboboxSelected>>", self.select_inter_delay)
 
-        def select_inter_delay(change):
-            delay = change['new']
-            self.inter_delay = float(delay)
-        inter_delay = widgets.Dropdown(options='0.0,0.5,1.0,1.5'.split(','),
-                                       value=str(self.inter_delay), description='delay(sec): ', )
-        inter_delay.observe(select_inter_delay, names='value')
+        # Close button
+        btn_close = tk.Button(self.root, text='Close', command=self.on_close)
+        btn_close.pack()
 
-        btn_close = widgets.Button(description='Close')
-        btn_close.on_click(lambda b: (self.player.clear()))
-        hbox = widgets.HBox([cb_play_boundary, cb_play_cont, cb_transcribe, cb_translate, inter_delay])
-        display(hbox, btn_close)
-        pass
-
-# dui = DebugUI(mp4file)
-# dui.set_segment(no_shortvoice_segs)
-
+        # Start the Tkinter main loop
+        self.root.mainloop()
 
 
 #
