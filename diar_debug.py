@@ -9,6 +9,7 @@ from jjutils.static import static_vars
 import simpleaudio
 import subprocess, numpy as np
 import pydub
+from collections import deque
 
 from pyannote.core import notebook
 import openai # pip install openai
@@ -182,6 +183,8 @@ class AudioChunk: # for more fine-controlling(ms).
 #
 #
 #
+async def anullfunc(): pass
+
 class VlcPlayer:
     def __init__(self, width = 1920*2, height = 1080*2):
         os.environ["VLC_VERBOSE"] = str("-1")
@@ -191,18 +194,17 @@ class VlcPlayer:
         # opts.extend(f"--video-on-top --width={width} --height={height}".split())
 
         self.instance = vlc.Instance(opts)
-        self.vlcp: vlc.MediaPlayer = self.instance.media_player_new()
-
+        self.vlcp: vlc.MediaPlayer = self.instance.media_player_new() # type: ignore
+        self.audio = None
         # self.player.video_set_scale(3)
-        self.stop_play = True
+        self.stop_requested = True
         self.async_play_task = None
         self.text = ''
-        self.n_played = 0
+
         self.play_boundary = False
         self.play_to_end = False
         self.play_started = []
         self.play_done = []
-
 
     def set_file(self, mp4path):
         media = self.instance.media_new(mp4path)
@@ -231,9 +233,10 @@ class VlcPlayer:
     def clear(self):
         if self.instance == None: return
         # wait not playing...
-        self.stop_play = True
+        self.stop_requested = True
         self.vlcp.stop()
-        self.audio.stop()
+        if self.audio:
+            self.audio.stop()
 
         del self.vlcp
         del self.instance
@@ -242,21 +245,39 @@ class VlcPlayer:
         gc.collect()
 
     def stop(self):
-        self.audio.stop()
+        if self.audio:
+            self.audio.stop()
         # self.vlcp.pause()
 
+    in_aplay = False
+    requested_segment = (0,0)
+    tasks = deque([
+        asyncio.create_task(anullfunc()),
+        asyncio.create_task(anullfunc())
+    ])
+
     def play(self, start_sec:float, end_sec:float):
-        asyncio.create_task(self.aplay(start_sec, end_sec))
+        # olds,_ = self.requested_segment
+        # if len(self.play_started) > 10: self.play_started.pop(0)
+        # self.play_started.append(olds)
+        # if len(self.play_started) > 10: self.play_started.pop(0)
+        # self.play_started.append(olds)
 
-    async def aplay(self, start_sec:float, end_sec:float):
+        self.requested_segment = (start_sec, end_sec)
+        if self.tasks[0].done():
+            self.tasks.popleft()
+            self.tasks.append( asyncio.create_task(self.aplay()) )
 
-        self.n_played += 1
+    async def aplay(self):
+        while self.in_aplay:
+            self.stop_requested = True
+            await asyncio.sleep(0.1)
+
+        self.in_aplay = True
+        start_sec, end_sec = self.requested_segment
+        # print(f' aplay({start_sec} ~ {end_sec}), {self.in_aplay}')
+
         try:
-            # wait not playing...
-            while self.n_played >= 2:
-                self.stop_play = True
-                await asyncio.sleep(0.1)
-
             duration = end_sec - start_sec
             if duration > 8*1.2 and self.play_boundary and not self.play_to_end:
                 ranges = [(start_sec, start_sec+4, 's.'), (end_sec-3, end_sec, 'e.')]
@@ -268,21 +289,26 @@ class VlcPlayer:
             self.vlcp.play()
             while self.vlcp.get_state() != vlc.State.Playing:
                 await asyncio.sleep(0.1)
-            self.stop_play = False
+            # print(' self.vlcp.play() ')
+            self.stop_requested = False
 
-            if len(self.play_started) > 5: self.play_started.pop(0)
+            if len(self.play_started) > 10: self.play_started.pop(0)
             self.play_started.append(start_sec)
 
-            for start_sec, end_sec, sec_type in ranges:
-                if self.stop_play: break
-                self.vlcp.set_time(int(start_sec * 1000))
-                self.end_ms = int(end_sec * 1000)
+            for start_chunk, end_chunk, sec_type in ranges:
+                if self.stop_requested: break
+                self.vlcp.set_time(int(start_chunk * 1000))
+                self.end_ms = int(end_chunk * 1000)
 
                 fad_out = sec_type == 's.'
                 fad_in = sec_type == 'e.'
-                self.audio.play(start_sec, -1 if self.play_to_end else end_sec , use_beep= sec_type != 's.', fade_out=fad_out, fade_in=fad_in)
+                assert self.audio
+                self.audio.play(start_chunk, -1 if self.play_to_end else end_chunk ,
+                                use_beep= sec_type != 's.',
+                                fade_out=fad_out,
+                                fade_in=fad_in)
 
-                while self.stop_play == False and self.audio.play_obj.is_playing():
+                while self.stop_requested == False and self.audio.play_obj.is_playing():
                     # update text(time remained or current position)
                     current_sec = self.current_ms() / 1000
                     remained_sec = int(self.remained_ms()/1000)
@@ -291,17 +317,19 @@ class VlcPlayer:
                         self.text + f'\n: {sec_type}: cur={current_sec:.1f}, remained={remained_sec}')
                     await asyncio.sleep(0.3) # update text.
                 self.audio.stop()
-            # for
-            if len(self.play_done) > 5: self.play_done.pop(0)
+            # del start_chunk, end_chunk, sec_type # for
+            if len(self.play_done) > 10: self.play_done.pop(0)
             self.play_done.append(start_sec)
-
-
-        except AttributeError:
+        except Exception as ex:
+            print("ex:", ex)
             pass
 
-        if self.vlcp and self.n_played <= 1:
-            self.vlcp.pause()
-        self.n_played -= 1
+        self.vlcp.pause()
+        while self.vlcp.get_state() != vlc.State.Paused: # type: ignore
+            await asyncio.sleep(0.1)
+        # print(' self.vlcp.pause() ')
+        self.in_aplay = False
+        pass
 
     def assure_play_started(self, start_sec:float):
         return start_sec in self.play_started
@@ -310,7 +338,7 @@ class VlcPlayer:
         return start_sec in self.play_done
 
     def is_playing(self):
-        return self.vlcp and self.vlcp.get_state() == vlc.State.Playing
+        return self.vlcp and self.vlcp.get_state() == vlc.State.Playing # type: ignore
     # def in_range(self):
     #     return self.remained_ms() > 0
     def remained_ms(self):
@@ -319,9 +347,11 @@ class VlcPlayer:
         return self.vlcp.get_time()
 
     def forward(self, sec:float):
-        if self.vlcp.get_state() == vlc.State.Playing:
+        if self.vlcp.get_state() == vlc.State.Playing: # type: ignore
+    # def in_range(self):
             curpos = self.vlcp.get_time()
             self.vlcp.set_time(curpos + sec*1000)
+            assert self.audio
             self.audio.forward(sec)
 
     def _draw_text(self, text, *, clr_argb):
@@ -337,7 +367,7 @@ class VlcPlayer:
 
 
     clr_index = 0
-    def draw_text(self, text, *, clr_index:int = -1, rgba:list[float] = None):
+    def draw_text(self, text, *, clr_index:int = -1, rgba:list[float]|None = None):
         if rgba is None:
             if clr_index < 0:
                 clr_index = VlcPlayer.clr_index
@@ -609,11 +639,11 @@ class DebugDiarUI:
 
             while not self.player.assure_play_started(seg.start_sec):
                 await asyncio.sleep(0.1)
-            # print('wait start', seg.start_sec)
+            print('wait start', seg.start_sec)
 
             while not self.player.assure_play_done(seg.start_sec):
                 await asyncio.sleep(0.1)
-            # print('wait done', seg.start_sec)
+            print('wait done', seg.start_sec)
 
 
             while slider.value < slider.max:
@@ -622,11 +652,11 @@ class DebugDiarUI:
 
                 while not self.player.assure_play_started(start_sec):
                     await asyncio.sleep(0.1)
-                # print('wait start', start_sec)
+                print('wait start', start_sec)
 
                 while not self.player.assure_play_done(start_sec):
                     await asyncio.sleep(0.1)
-                # print('wait done', start_sec)
+                print('wait done', start_sec)
 
                 if not self.is_playall: break
                 if self.inter_delay> 0:
@@ -642,9 +672,11 @@ class DebugDiarUI:
         self.is_playall = not self.is_playall
         if self.is_playall:
             btn.icon = 'pause'
+            btn.description = 'pause'
             return asyncio.create_task(self.aplay_all(segs, slider))
         else:
             btn.icon = 'play'
+            btn.description = 'playall'
             self.player.stop()
             return
 
@@ -743,6 +775,7 @@ class DebugDiarUI:
 
             # if self.vlc: self.vlc.stop()
             self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+            # fn_slider()
 
         title = widgets.Label(value=f'> {label}: {count= }',
                             style={'background': 'green', 'text_color': 'white'},
@@ -761,10 +794,10 @@ class DebugDiarUI:
         def slider_value(val:int):
             if 0<= val < count: slider.value = val
 
-        btn_prev = widgets.Button(description='',  icon='arrow-left', tooltip='' )
-        btn_next = widgets.Button(description='', icon='arrow-right', tooltip='' )
-        replay_btn = widgets.Button(description='', icon='repeat', tooltip='' )
-        playall_btn = widgets.Button(description='', icon='play', tooltip='' )
+        btn_prev = widgets.Button(description='prev',  icon='arrow-left', tooltip='' ) # <-
+        btn_next = widgets.Button(description='next', icon='arrow-right', tooltip='' ) # ->
+        replay_btn = widgets.Button(description='replay', icon='repeat', tooltip='' ) # G
+        playall_btn = widgets.Button(description='playall', icon='play', tooltip='' ) # >
 
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
         playall_btn.on_click(lambda btn: self.on_play_all(btn, segs, slider))
@@ -828,7 +861,7 @@ class DebugDiarUI:
         self.player.play_boundary = True
         cb_play_boundary = widgets.Checkbox(
             value= self.player.play_boundary,
-            description='Play start/end only',
+            description='Play start&end only',
             indent=False
         )
         cb_play_cont = widgets.Checkbox(
