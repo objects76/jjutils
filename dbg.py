@@ -4,6 +4,7 @@
 import os
 import inspect
 import glob
+import inspect
 
 # black,red,green,yellow,blue,magenta,cyan,white = [text_color(clr) for clr in range(90,98)]
 from .clrs import text_color
@@ -14,6 +15,12 @@ blue = text_color(94)
 
 # import sys, os
 # if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
+def fname(inc_line=False) -> str:
+    """현재 실행 중인 함수의 이름을 반환"""
+    caller = inspect.currentframe().f_back  # type: ignore
+    if inc_line:
+        return f"{caller.f_code.co_name}:{caller.f_lineno}" # type: ignore
+    return caller.f_code.co_name # type: ignore
 
 def typeinfo(obj, short=False):
     s = str(type(obj))

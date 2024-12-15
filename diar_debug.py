@@ -6,6 +6,7 @@ import re
 from .diar_utils import to_hhmmss
 from jjutils.static import static_vars
 
+from typing import Final
 import simpleaudio
 import subprocess, numpy as np
 import pydub
@@ -632,18 +633,18 @@ class DebugDiarUI:
             segments=scripts)
 
     async def aplay_all(self, segs, slider:widgets.IntSlider):
-        print('0. aplay_all done', self.is_playall)
+        # print('0. aplay_all done', self.is_playall)
         try:
             seg = segs[slider.value]
             self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
 
             while not self.player.assure_play_started(seg.start_sec):
                 await asyncio.sleep(0.1)
-            print('wait start', seg.start_sec)
+            # print('wait start', seg.start_sec)
 
             while not self.player.assure_play_done(seg.start_sec):
                 await asyncio.sleep(0.1)
-            print('wait done', seg.start_sec)
+            # print('wait done', seg.start_sec)
 
 
             while slider.value < slider.max:
@@ -652,11 +653,11 @@ class DebugDiarUI:
 
                 while not self.player.assure_play_started(start_sec):
                     await asyncio.sleep(0.1)
-                print('wait start', start_sec)
+                # print('wait start', start_sec)
 
                 while not self.player.assure_play_done(start_sec):
                     await asyncio.sleep(0.1)
-                print('wait done', start_sec)
+                # print('wait done', start_sec)
 
                 if not self.is_playall: break
                 if self.inter_delay> 0:
@@ -665,7 +666,7 @@ class DebugDiarUI:
         except AttributeError as ex:
             print('aplay_all.ex:', ex)
             pass
-        print('1. aplay_all done', self.is_playall)
+        # print('1. aplay_all done', self.is_playall)
         self.is_playall = False
 
     def on_play_all(self, btn, segs, slider:widgets.IntSlider):
@@ -857,41 +858,45 @@ class DebugDiarUI:
         # display(widgets.HBox([btn_ff5, btn_ff10]))
 
         # self._interact_video(self.segs_inter, f'diar: inter')
+        BTN_PLAY_BOUNDARY:Final[str] = 'Play start&end only'
+        BTN_PLAY_TO_END:Final[str] = 'Play to end'
+        BTN_TRANSCRIBE:Final[str] = 'Transcribe'
+        BTN_TRANSLATE:Final[str] = 'Translate'
 
         self.player.play_boundary = True
         cb_play_boundary = widgets.Checkbox(
             value= self.player.play_boundary,
-            description='Play start&end only',
+            description=BTN_PLAY_BOUNDARY,
             indent=False
         )
         cb_play_cont = widgets.Checkbox(
             value= False,
-            description='Play to end',
+            description=BTN_PLAY_TO_END,
             indent=False
         )
         cb_transcribe = widgets.Checkbox(
             value= self.transcribe,
-            description='Transcribe',
+            description=BTN_TRANSCRIBE,
             indent=False
         )
         cb_translate = widgets.Checkbox(
             value= self.translate,
-            description='Translate',
+            description=BTN_TRANSLATE,
             indent=False,
             disabled = not self.transcribe,
         )
 
         def on_checkbox_change(change):
             desc, value = change['owner'].description, change['new']
-            if desc == 'Play to end':
+            if desc == BTN_PLAY_TO_END:
                 self.player.play_to_end = value
-            elif desc == 'Play start/end only':
+            elif desc == BTN_PLAY_BOUNDARY:
                 self.player.play_boundary = value
 
-            elif desc == 'Transcribe':
+            elif desc == BTN_TRANSCRIBE:
                 self.transcribe = value
                 cb_translate.disabled = (value == False)
-            elif desc == 'Translate':
+            elif desc == BTN_TRANSLATE:
                 self.translate = value
 
         cb_play_boundary.observe(on_checkbox_change, names='value')
