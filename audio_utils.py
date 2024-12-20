@@ -1,6 +1,6 @@
 
 #%% - m3u
-from typing import cast
+from typing import cast, Iterable
 import sys, os, re
 if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
@@ -27,6 +27,10 @@ import subprocess
 
 #%% - m3u
 def time_to_seconds(time_str):
+    return hhmmss_to_seconds(time_str)
+
+
+def hhmmss_to_seconds(time_str) -> float:
     if not time_str: return 0
     time_str = time_str.strip()
     if time_str.count(':') == 1: time_str = "00:" + time_str
@@ -39,9 +43,6 @@ def time_to_seconds(time_str):
 
     total_seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000.0
     return total_seconds
-
-def hhmmss_to_seconds(time_str):
-    return time_to_seconds(time_str)
 
 def to_hhmmss(seconds, compact=False):
     secs, _, frac = str(seconds).partition('.')
@@ -58,87 +59,7 @@ def to_hhmmss(seconds, compact=False):
 
     return f"{hours:02}:{minutes:02}:{seconds:02},{ms}"
 
-# def build_m3u( srcfile, mp4file, m3ufile ):
-#     if srcfile.endswith('.tag'):
-#         diar = pd.read_csv(srcfile, delimiter='\t')
-#         # diar = diar.sort_values(by='ssec')
 
-#         _esec = 0
-#         with open(m3ufile, 'w') as fp:
-#             fp.write('#EXTM3U\n')
-#             for i, seg in diar.iterrows():
-#                 ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
-#                 duration = esec - ssec
-#                 empty = ssec - _esec
-#                 if empty>= 0.5:
-#                     fp.write(
-#                         f'#EXTINF:{int(empty)}, speaker_empty - duration={empty:.1f}\n'
-#                         f'#EXTVLCOPT:start-time={_esec}\n'
-#                         f'#EXTVLCOPT:stop-time={ssec}\n'
-#                         f'{mp4file}\n'
-#                     )
-
-#                 fp.write(
-#                     f'#EXTINF:{int(duration)}, speaker_{tag} - duration={duration:.1f}\n'
-#                     f'#EXTVLCOPT:start-time={ssec}\n'
-#                     f'#EXTVLCOPT:stop-time={esec}\n'
-#                     f'{mp4file}\n'
-#                     #vlc://pause:1
-#                 )
-#                 _esec = esec
-
-#     elif srcfile.endswith('.srt'):
-#         with open(srcfile) as fp: srt = fp.read()
-#         matches = re.findall(r"([\d:,]+) --> ([\d:,]+)\n([^\n]+)", srt, re.M)
-#         with open(m3ufile, 'w') as fp:
-#             fp.write('#EXTM3U\n')
-#             for m in matches:
-#                 ssec, esec, text = m
-#                 fp.write(
-#                     f'#EXTINF:-1, {text[:20]}\n'
-#                     f'#EXTVLCOPT:start-time={time_to_seconds(ssec)}\n'
-#                     f'#EXTVLCOPT:stop-time={time_to_seconds(esec)}\n'
-#                     f'{mp4file}\n'
-#                     #vlc://pause:1
-#                     )
-#     else:
-#         raise ValueError("invalid srcfile:"+srcfile)
-#     return m3ufile
-
-# def build_srt(tagfile, srtfile):
-#     diar = pd.read_csv(tagfile, delimiter='\t')
-
-#     with open(srtfile, 'w') as fp:
-#         n_subscription = 0
-#         _esec = 0
-#         for _, seg in diar.iterrows():
-#             ssec, esec, tag = seg['ssec'], seg['esec'], int(seg['tag'])
-#             empty = ssec - _esec
-#             if empty>= 0.5:
-#                 n_subscription += 1
-#                 fp.write(
-#                     f"{n_subscription}\n"
-#                     f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
-#                     f"Speaker empty - duration={empty:.1f} sec\n\n"
-#                     )
-
-#             n_subscription += 1
-#             fp.write(
-#                 f"{n_subscription}\n"
-#                 f"{to_hhmmss(ssec)} --> {to_hhmmss(esec)}\n"
-#                 f"Speaker {tag} - duration={esec-ssec:.1f} sec\n\n"
-#                 )
-#             _esec = esec
-#     return srtfile
-
-
-# if __name__ == '__main__':
-#     tagfile = 'testdata/jp.Meeting-10min.mp3-pyannote.tag'
-#     mp4file = 'testdata/jp.Meeting.mp4'
-#     m3ufile = 'jp.Meeting-10min-pyannote.m3u'
-#     build_m3u(tagfile, mp4file, m3ufile)
-
-# %%
 FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 
 # import pydub
@@ -202,7 +123,6 @@ def audio2mp4(wav_path, out_path):
 
 
 
-# %%
 import re
 def get_segment_from_srt(from_srt:Path):
     if from_srt:
@@ -215,7 +135,6 @@ def get_segment_from_srt(from_srt:Path):
                 s,e,t = m
                 fp.write(f"{s}\t{e}\t{t}\n")
 
-# %%
 from pydub import AudioSegment, generators # pip install pydub
 import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleaudio
 from pyannote.core import Segment
@@ -223,7 +142,8 @@ import time
 
 def play_audio(file_path: str,
                *,
-               ranges: list[ tuple[float,float] ]| list[Segment],
+            #    ranges: list[ tuple[float,float] ]| list[Segment],
+               ranges: Iterable,
                speed: float = 1.0,
                start_end_notifier = True):
     # Load the full audio file
@@ -343,56 +263,72 @@ import numpy as np
 import subprocess
 import torch
 
-def load_audio(media_input: str) -> torch.Tensor:
-    """
-    오디오 파일을 로드하고 정규화된 파형을 반환합니다.
-    Returns:
-        torch.Tensor: 정규화된 오디오 파형 (1 x N)
-    """
+def load_audio(media_input: str|Path, normalize=True) -> torch.Tensor:
     FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
     try:
-        cmd = f"{FFMPEG} -i {media_input} -f s16le -ac 1 -acodec pcm_s16le -ar 16000 -"
+        cmd = f"{FFMPEG} -i {str(media_input)} -f s16le -ac 1 -acodec pcm_s16le -ar 16000 -"
         out:bytes = subprocess.run(cmd.split(), capture_output=True, check=True).stdout
-        normed_waveform = np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
-        return torch.from_numpy(normed_waveform[None, :]) # [-1,1]
+        waveform = np.frombuffer(out, np.int16).flatten() # int16
+        if normalize:
+            waveform = waveform.astype(np.float32) / 32768.0 # float32
+
+        return torch.from_numpy(waveform[None, :]) # [1,n_signal]
 
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-
 
 
 import torch
 import numpy as np
 import simpleaudio
 from pyannote.core import Segment, Timeline, Annotation
+from typing import Final
 
-def play_tensor(audio_tensor:torch.Tensor, nsec:int=999):
+
+def play_tensor(audio_tensor:torch.Tensor, nsec:int=999, sr=16000):
     audio_data = audio_tensor.squeeze().numpy()
+    assert audio_data.dtype == np.float32, f"np.float32? {audio_data.dtype}"
+    assert audio_data.ndim == 1, f"ndim==1? {audio_data.shape}"
     audio_data = audio_data[:16000*nsec]
-    assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1
-    assert audio_data.ndim == 1
+    assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1, f"[-1,1] =? {torch.min(audio_tensor)} ~ {torch.max(audio_tensor)}"
     audio_data = (audio_data * 32767).astype(np.int16) # normalized float -> int16
+    try:
+        audio_bytes = audio_data.tobytes()
+        play_obj = simpleaudio.play_buffer(audio_bytes, num_channels=1, bytes_per_sample=2, sample_rate=sr)
+        play_obj.wait_done()
+    except KeyboardInterrupt:
+        play_obj.stop()
+        print("KeyboardInterrupt")
+        pass
 
-    audio_bytes = audio_data.tobytes()
-    play_obj = simpleaudio.play_buffer(audio_bytes, num_channels=1, bytes_per_sample=2, sample_rate=16000)
-    play_obj.wait_done()
 
+def get_audio_clips(
+        segments:Timeline,
+        mp4path:str,
+        min_threshold_sec:float=0
+        ) -> list[torch.Tensor]:
+    """
+    return list[ Tensor(1,n_signal) ]
+    """
+    self = get_audio_clips
+    if self._audio_data.get("mp4path", "") != mp4path:
+        self._audio_data["pcm16k"] = load_audio(mp4path)
+        self._audio_data["mp4path"] = mp4path
 
-def get_audio_data(audio_path, chunk:Segment, duration:float=0) -> torch.Tensor:
-    self = get_audio_data
-    if self._audio_data.get("audio_path", "") != audio_path:
-        self._audio_data["audio_tensor"] = load_audio(audio_path)
-        self._audio_data["audio_path"] = audio_path
+    pcm16k:torch.Tensor = self._audio_data["pcm16k"]
+    min_signal:Final[int] = int(min_threshold_sec *16000)
 
-    start_sec, end_sec=chunk
-    end_sec = min(end_sec, start_sec+duration or chunk.duration)
+    waves = []
+    for seg in iter(segments):
+        chunk = pcm16k[:, int(seg.start*16000):int(seg.end*16000)]
 
-    data = self._audio_data["audio_tensor"]
-    start_idx = int(start_sec * 16000)
-    end_idx = int((end_sec)*16000)
-    waveform = data[start_idx:end_idx]
-    return waveform.unsqueeze(0) # (1,1,n_signal)
-get_audio_data._audio_data = {}
+        if len(chunk[-1]) < min_signal:
+            # print(f"{len(chunk[-1])/16000:.3f} sec dropped, {chunk.shape=}")
+            continue
+        waves.append(chunk)
+    print(f"{len(waves)} / {len(segments)}, #{len(segments)-len(waves)} dropped")
+    return waves
+get_audio_clips._audio_data = {}
 
 
 #

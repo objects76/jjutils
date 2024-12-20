@@ -60,6 +60,7 @@ def set_default_logger():
                 record.pathname = "notebook"
             else:
                 record.pathname = record.pathname.replace(os.getcwd(), '.')
+                record.pathname = record.pathname.replace('/home/jjkim/anaconda3/envs/pyan320-weaviate/lib/python3.10/site-', './')
             record.color_code = self.COLORS.get(record.levelno, "")
             record.reset_code = "\33[0m"
             record.name = record.name[-15:]

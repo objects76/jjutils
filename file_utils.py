@@ -6,6 +6,7 @@ def get_latest_file(dir_path, *, excludes:list|None=None, extensions:list|None=N
     extensions=[".rttm"], must start with '.'
     """
     p = Path(dir_path)
+    assert p.is_dir(), f"{dir_path} is not a directory"
 
     if extensions:
         # assert all(ext.startswith('.') for ext in extensions)

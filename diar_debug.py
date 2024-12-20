@@ -13,9 +13,14 @@ import pydub
 from collections import deque
 
 from pyannote.core import notebook
-import openai # pip install openai
 
-_openai = openai.OpenAI()
+def get_openai():
+    import openai # pip install openai
+    if get_openai._openai is None:
+        _openai = openai.OpenAI()
+    return get_openai._openai
+get_openai._openai = None
+
 os.makedirs('./testdata/cache', exist_ok=True)
 
 class AudioChunk: # for more fine-controlling(ms).
@@ -482,7 +487,6 @@ class HFWhisper:
 #
 #
 #
-import openai
 import shelve
 import json
 
@@ -498,7 +502,7 @@ def translate(text_ja, force_update = False):
             + "\nOutput format example:"
             + "\n{ \"kor\": \"translated korean is here...\"}"
         ))
-        response = _openai.chat.completions.create(
+        response = get_openai().chat.completions.create(
             model="gpt-4o",  # or the latest model you want to use
             messages=[user_msg],
             temperature = 0,
@@ -934,7 +938,7 @@ import io
 @static_vars(cache = shelve.open('./testdata/cache/tts.shelve'))
 def tts(text:str, man=False):
     if text not in tts.cache:
-        response = _openai.audio.speech.create(
+        response = get_openai().audio.speech.create(
             model="tts-1", # tts-1-hd
             voice="onyx" if man else 'nova', # 'nova', onyx, https://platform.openai.com/docs/guides/text-to-speech
             response_format = 'mp3', speed=1.,
