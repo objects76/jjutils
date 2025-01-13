@@ -556,6 +556,7 @@ class DebugDiarUI:
 
         self.transcribe = transcribe
         self.translate = self.transcribe and True
+        self.rename_history = []
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
@@ -738,16 +739,38 @@ class DebugDiarUI:
         except RuntimeError as ex:
             print('a_transcribe:', ex)
 
-    def _interact_video(self, segs, label='', ui=None):
+    def rename_speakers(self, tags):
+        for from_, to_ in tags:
+            self.rename_speaker(from_, to_, dump_history=False)
+        print(f"#{len(self.rename_history)}: {self.rename_history}")
 
-        count = len(segs)
+    def rename_speaker(self, tag, new_tag, dump_history=True):
+        new_segs = []
+        # self.rawsegs
+        changed = False
+        for seg in self.active_segs:
+            if seg.speaker_tag == tag:
+                new_segs.append(Speaker(seg.start_sec, seg.end_sec, new_tag))
+                changed = True
+            else:
+                new_segs.append(seg)
+
+        if changed:
+            assert len(self.active_segs) == len(new_segs)
+            self.active_segs = new_segs
+            self.rename_history.append( (tag,new_tag))
+            if dump_history:
+                print(f"#{len(self.rename_history)}: {self.rename_history}")
+
+    def _interact_video(self, label='', ui=None):
+        count = len(self.active_segs)
         # details = widgets.Label(value=f'')
         details = widgets.HTML(value=f'')
 
         def fn_slider(idx):
             # self.is_playall = False
 
-            seg = segs[idx]
+            seg = self.active_segs[idx]
             dur = seg.end_sec - seg.start_sec
             range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
 
@@ -790,7 +813,7 @@ class DebugDiarUI:
         slider = widgets.IntSlider(
             value=self.cur_segidx,
             description=f'clips: ',
-            min=0, max= max(0, len(segs)-1), step=1,
+            min=0, max= max(0, len(self.active_segs)-1), step=1,
             continuous_update=False,
             style={'description_width': 'initial'},
             layout=widgets.Layout(width='400px'),
@@ -805,7 +828,7 @@ class DebugDiarUI:
         playall_btn = widgets.Button(description='playall', icon='play', tooltip='' ) # >
 
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
-        playall_btn.on_click(lambda btn: self.on_play_all(btn, segs, slider))
+        playall_btn.on_click(lambda btn: self.on_play_all(btn, self.active_segs, slider))
         btn_prev.on_click(lambda b: slider_value(slider.value-1))
         btn_next.on_click(lambda b: slider_value(slider.value+1))
         if ui: fn_slider(0) # play initial
@@ -824,6 +847,8 @@ class DebugDiarUI:
         SPEAKER_ALL = 'AllSpeaker'
         self.roi_widgets = None
         self.is_playall = False
+        self.active_segs = []
+
 
         self.speaker_filter == SPEAKER_ALL
         self.disp_id = str(time.time())
@@ -836,9 +861,11 @@ class DebugDiarUI:
         def select_speaker(change):
             speaker = change['new']
             self.speaker_filter = speaker
-
-            segs = self.rawsegs if speaker == SPEAKER_ALL else [item for item in self.rawsegs if item.speaker_tag == speaker]
-            self.roi_widgets = self._interact_video(segs, f'diar: {speaker}', ui=self.roi_widgets)
+            if speaker == SPEAKER_ALL:
+                self.active_segs = self.rawsegs
+            else:
+                self.active_segs = [item for item in self.rawsegs if item.speaker_tag == speaker]
+            self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
 
             if speaker == SPEAKER_ALL:
