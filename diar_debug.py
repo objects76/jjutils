@@ -399,7 +399,6 @@ class VlcPlayer:
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import simpleaudio
-from jjutils.diar_debug import AudioChunk
 import hashlib
 import shelve
 
@@ -468,7 +467,7 @@ class HFWhisper:
             result = HFWhisper._pipe(clip_norm, return_timestamps=False,
                             generate_kwargs = {
                                 "language": f"<|{language}|>",
-                                "task":"transcribe"})
+                                "task":"transcribe"}) # type: ignore
 
             HFWhisper.cache[key] = result
 
@@ -696,7 +695,7 @@ class DebugDiarUI:
         self.player.draw_text(
             f"{segment_speaker}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
             # clr_index= self.speaker_order.get(tag, -1)
-            rgba= notebook[segment_speaker][2]
+            rgba= notebook[segment_speaker][2] # type: ignore
             )
         # if tag != 'INTER':
         self.prev_end = end
