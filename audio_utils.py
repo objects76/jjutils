@@ -66,7 +66,10 @@ FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 # sound = pydub.AudioSegment.from_file('testdata/jp.20240319.mp4').set_channels(1)
 # sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
 
-def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3'):
+def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3') ->str:
+    """
+    get audio file from mp4 file
+    """
     if isinstance(start_time, int) and isinstance(end_time, int):
         ssec = start_time
         esec = end_time
@@ -218,7 +221,12 @@ def get_audio_info(file_path):
 from pydub import AudioSegment, generators
 import simpleaudio as sa # sudo apt-get install libasound2-dev && pip install simpleaudio
 
-def get_audio_segments(file_path: Path, *, pklsegs: list, start_end_notifier = True) -> list[AudioSegment]:
+def get_audio_segments(
+        file_path: Path,
+        *,
+        pklsegs: list,
+        start_end_notifier = True,
+        ) -> list[AudioSegment]:
     # Load the full audio file
     assert file_path.suffix == '.wav' or file_path.suffix == '.mp3'
     audio = AudioSegment.from_file(file_path)
@@ -285,11 +293,11 @@ from pyannote.core import Segment, Timeline, Annotation
 from typing import Final
 
 
-def play_tensor(audio_tensor:torch.Tensor, nsec:int=999, sr=16000):
+def play_tensor(audio_tensor:torch.Tensor, play_sec:int=999, sr=16000):
     audio_data = audio_tensor.squeeze().numpy()
     assert audio_data.dtype == np.float32, f"np.float32? {audio_data.dtype}"
     assert audio_data.ndim == 1, f"ndim==1? {audio_data.shape}"
-    audio_data = audio_data[:16000*nsec]
+    audio_data = audio_data[:16000*play_sec]
     assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1, f"[-1,1] =? {torch.min(audio_tensor)} ~ {torch.max(audio_tensor)}"
     audio_data = (audio_data * 32767).astype(np.int16) # normalized float -> int16
     try:
