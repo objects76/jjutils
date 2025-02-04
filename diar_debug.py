@@ -194,6 +194,7 @@ async def anullfunc(): pass
 class VlcPlayer:
     def __init__(self, width = 1920*2, height = 1080*2):
         os.environ["VLC_VERBOSE"] = str("-1")
+        os.environ["LIBVA_MESSAGING_LEVEL"] = str("0")
 
         opts = []
         opts.extend('--video-on-top --no-sub-autodetect-file --no-audio'.split())
@@ -201,6 +202,7 @@ class VlcPlayer:
 
         self.instance = vlc.Instance(opts)
         self.vlcp: vlc.MediaPlayer = self.instance.media_player_new() # type: ignore
+        assert self.vlcp
         self.audio = None
         # self.player.video_set_scale(3)
         self.stop_requested = True
@@ -555,7 +557,7 @@ class DebugDiarUI:
 
         self.transcribe = transcribe
         self.translate = self.transcribe and True
-        self.rename_history = []
+        self.rename_history = dict() # stag => ntag
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
@@ -739,11 +741,20 @@ class DebugDiarUI:
             print('a_transcribe:', ex)
 
     def rename_speakers(self, tags):
-        for from_, to_ in tags:
+        for from_, to_ in tags.items():
             self.rename_speaker(from_, to_, dump_history=False)
         print(f"#{len(self.rename_history)}: {self.rename_history}")
 
-    def rename_speaker(self, tag, new_tag, dump_history=True):
+    def rename_speaker(self, tag:str|int, new_tag:str, dump_history=True):
+        if not new_tag: return
+        if isinstance(tag, int):
+            *_, label = next(self.anno.itertracks(yield_label=True))
+            prefix = label.split('_')[0]
+            tag = f"{prefix}_{tag:02d}"
+
+        if tag in self.rename_history and self.rename_history[tag] == new_tag:
+            return
+
         new_segs = []
         # self.rawsegs
         changed = False
@@ -757,7 +768,7 @@ class DebugDiarUI:
         if changed:
             assert len(self.active_segs) == len(new_segs)
             self.active_segs = new_segs
-            self.rename_history.append( (tag,new_tag))
+            self.rename_history[tag] = new_tag
             if dump_history:
                 print(f"#{len(self.rename_history)}: {self.rename_history}")
 
