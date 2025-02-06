@@ -215,7 +215,7 @@ class VlcPlayer:
         self.play_done = []
 
     def set_file(self, mp4path):
-        media = self.instance.media_new(mp4path)
+        media:vlc.Media = self.instance.media_new(mp4path)
         self.vlcp.set_media(media)
 
         # self.vlcp.audio_set_mute(True)
@@ -541,7 +541,7 @@ from collections import namedtuple
 Speaker = namedtuple('Speaker', ['start_sec', 'end_sec', 'speaker_tag'])
 class DebugDiarUI:
     _player = None
-    def __init__(self, *, video_path = None, transcribe=False, offset=0) -> None:
+    def __init__(self, *, video_path = None, transcribe=False) -> None:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
@@ -554,6 +554,7 @@ class DebugDiarUI:
 
         self.prev_end = 0
         self.inter_delay = 0.5
+        self.play_range = notebook.crop or Segment(0, 99999)
 
         self.transcribe = transcribe
         self.translate = self.transcribe and True
@@ -577,7 +578,8 @@ class DebugDiarUI:
 
         for turn, _, speaker_tag in iter_tracks:
             if turn.end - turn.start > min_sec:
-                self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
+                if turn in self.play_range:
+                    self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
@@ -740,10 +742,20 @@ class DebugDiarUI:
         except RuntimeError as ex:
             print('a_transcribe:', ex)
 
-    def rename_speakers(self, tags):
-        for from_, to_ in tags.items():
-            self.rename_speaker(from_, to_, dump_history=False)
-        print(f"#{len(self.rename_history)}: {self.rename_history}")
+    def rename_speakers(self, tags:dict|str):
+        if isinstance(tags, dict):
+            for from_, to_ in tags.items():
+                self.rename_speaker(from_, to_, dump_history=False)
+            print(f"#{len(self.rename_history)}: {self.rename_history}")
+        elif isinstance(tags, str):
+            tokens:list[str] = tags.split()
+            for i in range(len(tokens)):
+                if tokens[i].isdecimal():
+                    from_ = int(tokens[i])
+                    to_ = tokens[i+1]
+                    self.rename_speaker(from_, to_, dump_history=False)
+            print(f"#{len(self.rename_history)}: {self.rename_history}")
+
 
     def rename_speaker(self, tag:str|int, new_tag:str, dump_history=True):
         if not new_tag: return
