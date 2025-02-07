@@ -192,13 +192,14 @@ class AudioChunk: # for more fine-controlling(ms).
 async def anullfunc(): pass
 
 class VlcPlayer:
-    def __init__(self, width = 1920*2, height = 1080*2):
+    def __init__(self, video_path=None, width = 1920*2, height = 1080*2):
         os.environ["VLC_VERBOSE"] = str("-1")
         os.environ["LIBVA_MESSAGING_LEVEL"] = str("0")
 
         opts = []
         opts.extend('--video-on-top --no-sub-autodetect-file --no-audio'.split())
-        # opts.extend(f"--video-on-top --width={width} --height={height}".split())
+        if video_path:
+            opts.extend(f'--video-title {Path(video_path).stem}'.split())
 
         self.instance = vlc.Instance(opts)
         self.vlcp: vlc.MediaPlayer = self.instance.media_player_new() # type: ignore
@@ -548,7 +549,7 @@ class DebugDiarUI:
         self.speaker_order = dict()
 
         self.speaker_filter = None
-        self.player = DebugDiarUI._player = VlcPlayer()
+        self.player = DebugDiarUI._player = VlcPlayer(video_path)
         if video_path:
             self.set_videofile(video_path)
 
