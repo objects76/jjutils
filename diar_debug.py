@@ -765,6 +765,7 @@ class DebugDiarUI:
             prefix = label.split('_')[0]
             tag = f"{prefix}_{tag:02d}"
 
+
         if tag in self.rename_history and self.rename_history[tag] == new_tag:
             return
 
@@ -782,8 +783,10 @@ class DebugDiarUI:
             assert len(self.active_segs) == len(new_segs)
             self.active_segs = new_segs
             self.rename_history[tag] = new_tag
+            notebook[new_tag] = notebook[tag] # copy style
             if dump_history:
                 print(f"#{len(self.rename_history)}: {self.rename_history}")
+
 
     def _interact_video(self, label='', ui=None):
         count = len(self.active_segs)
