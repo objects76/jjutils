@@ -241,6 +241,7 @@ class VlcPlayer:
 
     def clear(self):
         if self.instance == None: return
+        print('--clear called--')
         # wait not playing...
         self.stop_requested = True
         self.vlcp.stop()
@@ -317,7 +318,8 @@ class VlcPlayer:
                                 fade_out=fad_out,
                                 fade_in=fad_in)
 
-                while self.stop_requested == False and self.audio.play_obj.is_playing():
+                while self.stop_requested == False and \
+                    self.audio.play_obj and self.audio.play_obj.is_playing():
                     # update text(time remained or current position)
                     current_sec = self.current_ms() / 1000
                     remained_sec = int(self.remained_ms()/1000)
@@ -333,7 +335,8 @@ class VlcPlayer:
             print("ex:", ex)
             pass
 
-        self.vlcp.pause()
+        if self.vlcp:
+            self.vlcp.pause()
         while self.vlcp.get_state() != vlc.State.Paused: # type: ignore
             await asyncio.sleep(0.1)
         # print(' self.vlcp.pause() ')
