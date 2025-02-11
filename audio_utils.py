@@ -294,8 +294,10 @@ from typing import Final
 
 
 def play_tensor(audio_tensor:torch.Tensor, play_sec:int=999, sr=16000):
+    if audio_tensor.dtype != torch.float32:
+        audio_tensor = audio_tensor.float()/32768.0
     audio_data = audio_tensor.squeeze().numpy()
-    assert audio_data.dtype == np.float32, f"np.float32? {audio_data.dtype}"
+    assert audio_data.dtype == np.float32, f"np.float32? {audio_data.dtype=}"
     assert audio_data.ndim == 1, f"ndim==1? {audio_data.shape}"
     audio_data = audio_data[:16000*play_sec]
     assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1, f"[-1,1] =? {torch.min(audio_tensor)} ~ {torch.max(audio_tensor)}"

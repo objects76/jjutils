@@ -578,9 +578,9 @@ class DebugDiarUI:
             anno.itertracks(yield_label=True))
 
         for turn, _, speaker_tag in iter_tracks:
-            if turn.end - turn.start > min_sec:
-                if turn in self.play_range:
-                    self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
+            if turn.end - turn.start >= min_sec: # filtering, optional
+                if seg := turn&self.play_range:
+                    self.rawsegs.append( Speaker(seg.start, seg.end, speaker_tag) )
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
