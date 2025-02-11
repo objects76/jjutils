@@ -241,6 +241,7 @@ class VlcPlayer:
 
     def clear(self):
         if self.instance == None: return
+        print('--clear called--')
         # wait not playing...
         self.stop_requested = True
         self.vlcp.stop()
@@ -317,7 +318,8 @@ class VlcPlayer:
                                 fade_out=fad_out,
                                 fade_in=fad_in)
 
-                while self.stop_requested == False and self.audio.play_obj.is_playing():
+                while self.stop_requested == False and \
+                    self.audio.play_obj and self.audio.play_obj.is_playing():
                     # update text(time remained or current position)
                     current_sec = self.current_ms() / 1000
                     remained_sec = int(self.remained_ms()/1000)
@@ -578,9 +580,9 @@ class DebugDiarUI:
             anno.itertracks(yield_label=True))
 
         for turn, _, speaker_tag in iter_tracks:
-            if turn.end - turn.start > min_sec:
-                if turn in self.play_range:
-                    self.rawsegs.append( Speaker(turn.start, turn.end, speaker_tag) )
+            if turn.end - turn.start >= min_sec: # filtering, optional
+                if seg := turn&self.play_range:
+                    self.rawsegs.append( Speaker(seg.start, seg.end, speaker_tag) )
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
