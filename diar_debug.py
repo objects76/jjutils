@@ -332,8 +332,8 @@ class VlcPlayer:
         except Exception as ex:
             print("ex:", ex)
             pass
-
-        self.vlcp.pause()
+        if self.vlcp:
+            self.vlcp.pause()
         while self.vlcp.get_state() != vlc.State.Paused: # type: ignore
             await asyncio.sleep(0.1)
         # print(' self.vlcp.pause() ')

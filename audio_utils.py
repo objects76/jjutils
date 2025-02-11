@@ -339,7 +339,27 @@ def get_audio_clips(
 get_audio_clips._audio_data = {}
 
 
+import subprocess
+def audio_to_mp4(audio_path, out_path):
+    assert Path(audio_path).exists()
+    if Path(out_path).exists():
+        print(out_path, "already exists")
+        return
+    jpg_path = 'testdata/1280x720-bg.jpg'
+    FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+    cmd = f"{FFMPEG} -i {audio_path} -loop 1 -i {jpg_path} -c:v libx264 -c:a aac -b:a 192k -shortest {out_path}"
+    print(cmd)
+    subprocess.run(cmd.split(), check=True)
+#
+# audio_to_mp4(
+#     "testdata/ko/rsupkr-6c604986-cf3f-40ee-acd3-f29a3595ebe0.webm",
+#     "testdata/ko/rsupkr-6c604986-cf3f-40ee-acd3-f29a3595ebe0.mp4"
+#         )
+
+
 #
 # if __name__ == '__main__':
 #     mp4file = 'testdata/ntt.meeting.mp4'
 #     get_audio(mp4file, start_time=720, end_time=1500, audio_type='wav')
+
+
