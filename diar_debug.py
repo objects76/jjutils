@@ -541,7 +541,7 @@ from jjutils.diar_utils import (
 from pyannote.core import Annotation, Segment
 from collections import namedtuple
 
-Speaker = namedtuple('Speaker', ['start_sec', 'end_sec', 'speaker_tag'])
+Speaker = namedtuple('Speaker', ['seg', 'track', 'speaker_tag'])
 class DebugDiarUI:
     _player = None
     def __init__(self, *, video_path = None, transcribe=False) -> None:
@@ -574,22 +574,22 @@ class DebugDiarUI:
 
     @singledispatchmethod
     def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
-        self.rawsegs = []
+        self.raw_tracks = []
         iter_tracks = cast(
             Iterator[tuple[Segment, str, str]],
             anno.itertracks(yield_label=True))
 
-        for turn, _, speaker_tag in iter_tracks:
+        for turn, track, speaker_tag in iter_tracks:
             if turn.end - turn.start >= min_sec: # filtering, optional
                 if seg := turn&self.play_range:
-                    self.rawsegs.append( Speaker(seg.start, seg.end, speaker_tag) )
+                    self.raw_tracks.append( Speaker(turn, track, speaker_tag) )
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
 
         # find near segment.
         self.cur_segidx = 0
-        for i, seg in enumerate(self.rawsegs):
-            if seg.start_sec > start_sec: break
+        for i, seg in enumerate(self.raw_tracks):
+            if seg.seg.start > start_sec: break
             self.cur_segidx = i
 
         self._setup_ui()
@@ -614,28 +614,28 @@ class DebugDiarUI:
         return True
 
     def update_caching(self, nth, do_translate=True, force_update=False, debug=False):
-        seg = self.rawsegs[nth]
+        trk = self.raw_tracks[nth]
         text_ja = text_ko = ''
-        if self.is_speaker(seg.speaker_tag):
-            trans = self.whisper.transcribe(seg.start_sec, seg.end_sec, force_update=force_update, language=self.audio_language)
+        if self.is_speaker(trk.speaker_tag):
+            trans = self.whisper.transcribe(trk.seg.start, trk.seg.end, force_update=force_update, language=self.audio_language)
             text_ja = trans['text']
             text_ko = ''
             if self.audio_language != 'ko' and do_translate:
                 text_ko = translate(text_ja, force_update)
             if debug:
-                print(f'{seg.start_sec}~{seg.end_sec}:\n{text_ja}\n{text_ko}')
+                print(f'{trk.start_sec}~{trk.end_sec}:\n{text_ja}\n{text_ko}')
 
     def caching(self, do_translate=True, force_update=False, debug=False):
-        for ith in range(len(self.rawsegs)):
+        for ith in range(len(self.raw_tracks)):
             self.update_caching(ith, do_translate=do_translate, force_update=force_update, debug=debug)
 
     def get_script(self):
         scripts = []
-        for seg in self.rawsegs:
+        for trk in self.raw_tracks:
             text_ja = text_ko = ''
-            if self.is_speaker(seg.speaker_tag):
-                tag = seg.speaker_tag
-                start, end = seg.start_sec, seg.end_sec
+            if self.is_speaker(trk.speaker_tag):
+                tag = trk.speaker_tag
+                start, end = trk.seg.start, trk.seg.end
                 text_ja, text_ko = self.get_text(start,end)
             scripts.append( dict(start=round(start,3), end=round(end,3), speaker=tag, text_ja=text_ja, text_ko=text_ko) )
         return dict(
@@ -643,24 +643,24 @@ class DebugDiarUI:
             stt=type(self.whisper).__name__,
             segments=scripts)
 
-    async def aplay_all(self, segs, slider:widgets.IntSlider):
+    async def aplay_all(self, trks, slider:widgets.IntSlider):
         # print('0. aplay_all done', self.is_playall)
         try:
-            seg = segs[slider.value]
-            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+            seg = trks[slider.value]
+            self._play(seg.speaker_tag, seg.seg.start, seg.seg.end)
 
-            while not self.player.assure_play_started(seg.start_sec):
+            while not self.player.assure_play_started(seg.seg.start):
                 await asyncio.sleep(0.1)
-            # print('wait start', seg.start_sec)
+            # print('wait start', seg.seg.start)
 
-            while not self.player.assure_play_done(seg.start_sec):
+            while not self.player.assure_play_done(seg.seg.start):
                 await asyncio.sleep(0.1)
-            # print('wait done', seg.start_sec)
+            # print('wait done', seg.seg.start)
 
 
             while slider.value < slider.max:
                 slider.value = slider.value + 1
-                start_sec = segs[slider.value].start_sec
+                start_sec = trks[slider.value].seg.start
 
                 while not self.player.assure_play_started(start_sec):
                     await asyncio.sleep(0.1)
@@ -680,12 +680,12 @@ class DebugDiarUI:
         # print('1. aplay_all done', self.is_playall)
         self.is_playall = False
 
-    def on_play_all(self, btn, segs, slider:widgets.IntSlider):
+    def on_play_all(self, btn, trks, slider:widgets.IntSlider):
         self.is_playall = not self.is_playall
         if self.is_playall:
             btn.icon = 'pause'
             btn.description = 'pause'
-            return asyncio.create_task(self.aplay_all(segs, slider))
+            return asyncio.create_task(self.aplay_all(trks, slider))
         else:
             btn.icon = 'play'
             btn.description = 'playall'
@@ -716,26 +716,26 @@ class DebugDiarUI:
             text_ko = ''
         return (text_ja, text_ko)
 
-    async def a_transcribe(self, seg, details):
+    async def a_transcribe(self, trk, details):
         import concurrent.futures
         try:
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                dur = seg.end_sec - seg.start_sec
+                dur = trk.seg.end - trk.seg.start
 
                 text_ja = text_ko = ''
-                if self.is_speaker(seg.speaker_tag):
+                if self.is_speaker(trk.speaker_tag):
                     text_ja, text_ko = await loop.run_in_executor(
                         executor,
-                        self.get_text, seg.start_sec,seg.end_sec)
+                        self.get_text, trk.start_sec,trk.end_sec)
                     if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
                     if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
                     # print(text_ja, '\n', text_ko)
 
-                tag = seg.speaker_tag
+                tag = trk.speaker_tag
                 range = (
-                    f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} /"
-                    f" <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+                    f"{to_hhmmss(trk.start_sec)} ~ {to_hhmmss(trk.end_sec)} /"
+                    f" <span style='color: green;'>{trk.start_sec:.3f} ~ {trk.end_sec:.3f}</span> ({dur:.3f})"
                 )
                 details.value = (
                     f"Range= {range}     <span style='color: red;'>{tag}</span><br>"
@@ -771,42 +771,55 @@ class DebugDiarUI:
         if tag in self.rename_history and self.rename_history[tag] == new_tag:
             return
 
-        new_segs = []
+        new_trks = []
         # self.rawsegs
         changed = False
-        for seg in self.active_segs:
-            if seg.speaker_tag == tag:
-                new_segs.append(Speaker(seg.start_sec, seg.end_sec, new_tag))
+        for trk in self.roi_tracks:
+            if trk.speaker_tag == tag:
+                new_trks.append(Speaker(trk.seg, trk.track, new_tag))
                 changed = True
             else:
-                new_segs.append(seg)
+                new_trks.append(trk)
 
         if changed:
-            assert len(self.active_segs) == len(new_segs)
-            self.active_segs = new_segs
+            assert len(self.roi_tracks) == len(new_trks)
+            self.roi_tracks = new_trks
             self.rename_history[tag] = new_tag
             notebook[new_tag] = notebook[tag] # copy style
             if dump_history:
                 print(f"#{len(self.rename_history)}: {self.rename_history}")
 
 
+    def set_current_segment(self, trk):
+        # restore old segment
+        if self.cur_track:
+            seg,tn,label = self.cur_track
+            self.anno[seg,tn] = label
+
+        self.cur_track = trk
+        seg,tn,label = self.cur_track
+        self.anno[seg,tn] = "CUR"
+        update_display(self.anno, display_id=self.disp_id)
+
     def _interact_video(self, label='', ui=None):
-        count = len(self.active_segs)
+        count = len(self.roi_tracks)
         # details = widgets.Label(value=f'')
         details = widgets.HTML(value=f'')
 
         def fn_slider(idx):
             # self.is_playall = False
 
-            seg = self.active_segs[idx]
-            dur = seg.end_sec - seg.start_sec
-            range = f"{to_hhmmss(seg.start_sec)} ~ {to_hhmmss(seg.end_sec)} / <span style='color: green;'>{seg.start_sec:.3f} ~ {seg.end_sec:.3f}</span> ({dur:.3f})"
+            trk = self.roi_tracks[idx]
+            seg:Segment = trk.seg&self.play_range
+            range = f"{to_hhmmss(seg.start)} ~ {to_hhmmss(seg.end)} / <span style='color: green;'>{seg.start:.3f} ~ {seg.end:.3f}</span> ({seg.duration:.3f})"
+
+            self.set_current_segment(trk)
 
             text_ja = text_ko = ''
             if self.transcribe and not (
-                seg.speaker_tag.startswith('INTER') and seg.speaker_tag.endswith('OVERLAPPED')
+                trk.speaker_tag.startswith('INTER') and trk.speaker_tag.endswith('OVERLAPPED')
                 ):
-                asyncio.create_task(self.a_transcribe(seg, details))
+                asyncio.create_task(self.a_transcribe(trk, details))
                 text_ja = 'transcribing...'
 
                 # if dur > 10:
@@ -826,11 +839,10 @@ class DebugDiarUI:
                 #     text_ko = translate(text_ja)
                 #     if len(text_ko) > 85: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
 
-            tag = seg.speaker_tag
-            details.value = f"Range= {range}     <span style='color: red;'>{tag}</span><br>  {text_ja}<br>  {text_ko}"
+            details.value = f"Range= {range}     <span style='color: red;'>{trk.speaker_tag}</span><br>  {text_ja}<br>  {text_ko}"
 
             # if self.vlc: self.vlc.stop()
-            self._play(seg.speaker_tag, seg.start_sec, seg.end_sec)
+            self._play(trk.speaker_tag, seg.start, seg.end)
             # fn_slider()
 
         title = widgets.Label(value=f'> {label}: {count= }',
@@ -841,7 +853,7 @@ class DebugDiarUI:
         slider = widgets.IntSlider(
             value=self.cur_segidx,
             description=f'clips: ',
-            min=0, max= max(0, len(self.active_segs)-1), step=1,
+            min=0, max= max(0, len(self.roi_tracks)-1), step=1,
             continuous_update=False,
             style={'description_width': 'initial'},
             layout=widgets.Layout(width='400px'),
@@ -856,7 +868,7 @@ class DebugDiarUI:
         playall_btn = widgets.Button(description='playall', icon='play', tooltip='' ) # >
 
         replay_btn.on_click(lambda btn: fn_slider(slider.value))
-        playall_btn.on_click(lambda btn: self.on_play_all(btn, self.active_segs, slider))
+        playall_btn.on_click(lambda btn: self.on_play_all(btn, self.roi_tracks, slider))
         btn_prev.on_click(lambda b: slider_value(slider.value-1))
         btn_next.on_click(lambda b: slider_value(slider.value+1))
         if ui: fn_slider(0) # play initial
@@ -875,11 +887,13 @@ class DebugDiarUI:
         SPEAKER_ALL = 'AllSpeaker'
         self.roi_widgets = None
         self.is_playall = False
-        self.active_segs = []
+        self.roi_tracks = []
+        self.cur_track = None
 
 
         self.speaker_filter == SPEAKER_ALL
         self.disp_id = str(time.time())
+        notebook['CUR'] = ("solid", 10, (0,0,0))
         display( self.anno, display_id=self.disp_id)
         # update_display( self.anno , display_id=self.disp_id)
 
@@ -890,9 +904,9 @@ class DebugDiarUI:
             speaker = change['new']
             self.speaker_filter = speaker
             if speaker == SPEAKER_ALL:
-                self.active_segs = self.rawsegs
+                self.roi_tracks = self.raw_tracks
             else:
-                self.active_segs = [item for item in self.rawsegs if item.speaker_tag == speaker]
+                self.roi_tracks = [item for item in self.raw_tracks if item.speaker_tag == speaker]
             self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
 
@@ -903,7 +917,7 @@ class DebugDiarUI:
                 # anno.title = speaker
                 update_display( anno, display_id=self.disp_id)
 
-        speakers = set( seg.speaker_tag for seg in self.rawsegs)
+        speakers = set( seg.speaker_tag for seg in self.raw_tracks)
         speakers = [SPEAKER_ALL, *sorted(speakers)]
         dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
         dropdown.observe(select_speaker, names='value')
