@@ -25,7 +25,9 @@ os.makedirs('./testdata/cache', exist_ok=True)
 
 class AudioChunk: # for more fine-controlling(ms).
     def __init__(self, mp4path) -> None:
-        self.wave_bytes = AudioChunk.load_audio(mp4path).tobytes()
+        pcm16k = AudioChunk.load_audio(mp4path)
+        self.wave_bytes = pcm16k.tobytes()
+        self.duration = len(pcm16k) / 16000
         self.play_obj = None
 
         BEEP_FREQ = 1200
@@ -541,7 +543,9 @@ from jjutils.diar_utils import (
 from pyannote.core import Annotation, Segment
 from collections import namedtuple
 
+SPEAKER_ALL = 'AllSpeaker'
 Speaker = namedtuple('Speaker', ['seg', 'track', 'speaker_tag'])
+
 class DebugDiarUI:
     _player = None
     def __init__(self, *, video_path = None, transcribe=False) -> None:
@@ -557,11 +561,14 @@ class DebugDiarUI:
 
         self.prev_end = 0
         self.inter_delay = 0.5
-        self.play_range = notebook.crop or Segment(0, 99999)
+        self.roi_crop = notebook.crop or Segment(0, self.player.audio.duration)
 
         self.transcribe = transcribe
         self.translate = self.transcribe and True
         self.rename_history = dict() # stag => ntag
+
+        self.anno_ref = None
+
 
     def set_videofile(self, video_path):
         assert video_path and Path(video_path).exists()
@@ -571,8 +578,9 @@ class DebugDiarUI:
         self.whisper = HFWhisper(video_path)
         self.audio_language = 'ja' # 'ko', 'en'
 
+    def set_reference(self, reference:Annotation):
+        self.anno_ref = reference
 
-    @singledispatchmethod
     def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
         self.raw_tracks = []
         iter_tracks = cast(
@@ -581,10 +589,13 @@ class DebugDiarUI:
 
         for turn, track, speaker_tag in iter_tracks:
             if turn.end - turn.start >= min_sec: # filtering, optional
-                if seg := turn&self.play_range:
+                if seg := turn&self.roi_crop:
                     self.raw_tracks.append( Speaker(turn, track, speaker_tag) )
         self.anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.anno.labels())}
+
+        notebook.crop = Segment(
+            self.roi_crop.start, min(self.raw_tracks[-1].seg.end, self.roi_crop.start + 300))
 
         # find near segment.
         self.cur_segidx = 0
@@ -594,18 +605,12 @@ class DebugDiarUI:
 
         self._setup_ui()
 
-    @set_segment.register
-    def _(self, anno_path:str, *, min_sec = 0):
+    def set_segment_from_file(self, anno_path:str, *, min_sec = 0):
         if anno_path.endswith('.rttm'):
             _, anno = load_rttm(anno_path).popitem()
             self.set_segment(anno, min_sec=min_sec)
         else:
             assert False, f"invalid file format: {anno_path}"
-
-    # @set_segment.register
-    # def _(self, rawsegs:list[PklSegment], *, min_sec = 0):
-    #     self.rawsegs = [ Speaker(i.start_sec, i.end_sec, i.speaker_tag) for i in rawsegs if i.end_sec - i.start_sec > min_sec]
-    #     self._setup_ui()
 
     @staticmethod
     def is_speaker(tag):
@@ -751,31 +756,34 @@ class DebugDiarUI:
                 self.rename_speaker(from_, to_, dump_history=False)
             print(f"#{len(self.rename_history)}: {self.rename_history}")
         elif isinstance(tags, str):
+            tagmaps = dict()
             tokens:list[str] = tags.split()
             for i in range(len(tokens)):
                 if tokens[i].isdecimal():
-                    from_ = int(tokens[i])
-                    to_ = tokens[i+1]
-                    self.rename_speaker(from_, to_, dump_history=False)
-            print(f"#{len(self.rename_history)}: {self.rename_history}")
+                    tagmaps[int(tokens[i])] = tokens[i+1]
+            self.rename_speakers(tagmaps)
 
 
     def rename_speaker(self, tag:str|int, new_tag:str, dump_history=True):
         if not new_tag: return
+        prefix = None
         if isinstance(tag, int):
-            *_, label = next(self.anno.itertracks(yield_label=True))
-            prefix = label.split('_')[0]
-            tag = f"{prefix}_{tag:02d}"
+            for label in self.anno.labels():
+                if '_' not in label: continue
+                prefix = label.split('_')[0]
+                tag = f"{prefix}_{tag:02d}"
+                break
+            if prefix is None: return
 
 
         if tag in self.rename_history and self.rename_history[tag] == new_tag:
             return
 
         new_trks = []
-        # self.rawsegs
         changed = False
         for trk in self.roi_tracks:
             if trk.speaker_tag == tag:
+                # rename tags in self.roi_tracks
                 new_trks.append(Speaker(trk.seg, trk.track, new_tag))
                 changed = True
             else:
@@ -789,7 +797,6 @@ class DebugDiarUI:
             if dump_history:
                 print(f"#{len(self.rename_history)}: {self.rename_history}")
 
-
     def set_current_segment(self, trk):
         # restore old segment
         if self.cur_track:
@@ -799,7 +806,24 @@ class DebugDiarUI:
         self.cur_track = trk
         seg,tn,label = self.cur_track
         self.anno[seg,tn] = "CUR"
+
+        # readjust notebook.crop
+        cur_roi = Segment(0.2*notebook.crop.start, 0.8*notebook.crop.end)
+        if seg not in notebook.crop:
+            s = max(self.roi_crop.start, seg.start -10)
+            e = min(self.roi_crop.end, s+300)
+            print(f"new: {notebook.crop=} -> {s}, {e}")
+            notebook.crop = Segment(s,e)
+
         update_display(self.anno, display_id=self.disp_id)
+        if self.anno_ref:
+            update_display( self.anno_ref, display_id=self.disp_id+"_ref")
+
+        if self.n_log == 0:
+            display(f"{seg=}, {notebook.crop=}", display_id='log')
+            self.n_log = 1
+        update_display(f"{seg=}, {notebook.crop=}", display_id='log')
+    n_log = 0
 
     def _interact_video(self, label='', ui=None):
         count = len(self.roi_tracks)
@@ -810,7 +834,7 @@ class DebugDiarUI:
             # self.is_playall = False
 
             trk = self.roi_tracks[idx]
-            seg:Segment = trk.seg&self.play_range
+            seg:Segment = trk.seg&self.roi_crop
             range = f"{to_hhmmss(seg.start)} ~ {to_hhmmss(seg.end)} / <span style='color: green;'>{seg.start:.3f} ~ {seg.end:.3f}</span> ({seg.duration:.3f})"
 
             self.set_current_segment(trk)
@@ -884,7 +908,6 @@ class DebugDiarUI:
 
 
     def _setup_ui(self):
-        SPEAKER_ALL = 'AllSpeaker'
         self.roi_widgets = None
         self.is_playall = False
         self.roi_tracks = []
@@ -895,6 +918,9 @@ class DebugDiarUI:
         self.disp_id = str(time.time())
         notebook['CUR'] = ("solid", 10, (0,0,0))
         display( self.anno, display_id=self.disp_id)
+        if self.anno_ref:
+            display( self.anno_ref, display_id=self.disp_id+"_ref")
+
         # update_display( self.anno , display_id=self.disp_id)
 
         lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
@@ -910,18 +936,15 @@ class DebugDiarUI:
             self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
 
-            if speaker == SPEAKER_ALL:
-                update_display( self.anno , display_id=self.disp_id)
-            else:
-                anno = self.anno.label_support(speaker)
-                # anno.title = speaker
-                update_display( anno, display_id=self.disp_id)
+            update_display( self.anno , display_id=self.disp_id)
+            if self.anno_ref:
+                update_display( self.anno_ref, display_id=self.disp_id+"_ref")
 
         speakers = set( seg.speaker_tag for seg in self.raw_tracks)
         speakers = [SPEAKER_ALL, *sorted(speakers)]
         dropdown = widgets.Dropdown(options=speakers, description='Speaker: ')
         dropdown.observe(select_speaker, names='value')
-        display(widgets.HBox([dropdown, lbl_title]))
+        display(widgets.HBox([dropdown, lbl_title]), display_id="dropdown_speaker")
         select_speaker({"new": SPEAKER_ALL})
 
         # btn_ff5 = widgets.Button(description='+ 5sec')

@@ -39,7 +39,7 @@ def static_vars(**kwargs):
 
 def set_default_logger():
     import logging
-    logging.basicConfig(#level=logging.DEBUG,
+    logging.basicConfig(level=logging.WARNING,
                         format='%(asctime)s - %(name)s - %(levelname)s: %(message)s',
                         filename= None, filemode='a',
                         datefmt="%H:%M:%S", # "%Y-%m-%d %H:%M:%S",
