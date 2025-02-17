@@ -47,11 +47,11 @@ def set_default_logger():
 
     class CustomFormatter(logging.Formatter):
         COLORS = {
-            logging.DEBUG: "\33[47m",    # White
-            logging.INFO: "\33[42m",     # Green
-            logging.WARNING: "\33[43m",  # Yellow foreground
-            logging.ERROR: "\33[41m",    # Red foreground
-            logging.CRITICAL: "\33[41m", # Red background
+            logging.DEBUG: "\33[107m",    # White
+            logging.INFO: "\33[102m",     # Green
+            logging.WARNING: "\33[103m",  # Yellow foreground
+            logging.ERROR: "\33[101m",    # Red foreground
+            logging.CRITICAL: "\33[101m", # Red background
         }
 
         def format(self, record):

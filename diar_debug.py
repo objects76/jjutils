@@ -567,7 +567,7 @@ class DebugDiarUI:
         self.translate = self.transcribe and True
         self.rename_history = dict() # stag => ntag
 
-        self.anno_ref = None
+        self.anno_refs = []
 
 
     def set_videofile(self, video_path):
@@ -578,8 +578,8 @@ class DebugDiarUI:
         self.whisper = HFWhisper(video_path)
         self.audio_language = 'ja' # 'ko', 'en'
 
-    def set_reference(self, reference:Annotation):
-        self.anno_ref = reference
+    def set_references(self, references:list[Annotation]):
+        self.anno_refs = references
 
     def set_segment(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
         self.raw_tracks = []
@@ -685,16 +685,21 @@ class DebugDiarUI:
         # print('1. aplay_all done', self.is_playall)
         self.is_playall = False
 
+    task_playall = None
     def on_play_all(self, btn, trks, slider:widgets.IntSlider):
         self.is_playall = not self.is_playall
         if self.is_playall:
+            assert self.task_playall is None
             btn.icon = 'pause'
             btn.description = 'pause'
-            return asyncio.create_task(self.aplay_all(trks, slider))
+            self.task_playall = asyncio.create_task(self.aplay_all(trks, slider))
         else:
             btn.icon = 'play'
             btn.description = 'playall'
             self.player.stop()
+            if self.task_playall:
+                self.task_playall.cancel()
+                self.task_playall = None
             return
 
     def _play(self, segment_speaker, start, end):
@@ -808,22 +813,21 @@ class DebugDiarUI:
         self.anno[seg,tn] = "CUR"
 
         # readjust notebook.crop
-        cur_roi = Segment(0.2*notebook.crop.start, 0.8*notebook.crop.end)
         if seg not in notebook.crop:
             s = max(self.roi_crop.start, seg.start -10)
             e = min(self.roi_crop.end, s+300)
-            print(f"new: {notebook.crop=} -> {s}, {e}")
+            # print(f"new: {notebook.crop=} -> {s}, {e}")
             notebook.crop = Segment(s,e)
 
         update_display(self.anno, display_id=self.disp_id)
-        if self.anno_ref:
-            update_display( self.anno_ref, display_id=self.disp_id+"_ref")
+        for i, ref in enumerate(self.anno_refs):
+            update_display( ref, display_id=self.disp_id+f"_ref{i}")
 
-        if self.n_log == 0:
-            display(f"{seg=}, {notebook.crop=}", display_id='log')
-            self.n_log = 1
+        if self.log_dispid is None:
+            self.log_dispid = 'logdisp'
+            display("", display_id=self.log_dispid)
         update_display(f"{seg=}, {notebook.crop=}", display_id='log')
-    n_log = 0
+    log_dispid = None
 
     def _interact_video(self, label='', ui=None):
         count = len(self.roi_tracks)
@@ -918,8 +922,8 @@ class DebugDiarUI:
         self.disp_id = str(time.time())
         notebook['CUR'] = ("solid", 10, (0,0,0))
         display( self.anno, display_id=self.disp_id)
-        if self.anno_ref:
-            display( self.anno_ref, display_id=self.disp_id+"_ref")
+        for i, ref in enumerate(self.anno_refs):
+            display( ref, display_id=self.disp_id+f"_ref{i}")
 
         # update_display( self.anno , display_id=self.disp_id)
 
@@ -937,8 +941,9 @@ class DebugDiarUI:
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
 
             update_display( self.anno , display_id=self.disp_id)
-            if self.anno_ref:
-                update_display( self.anno_ref, display_id=self.disp_id+"_ref")
+
+            for i, ref in enumerate(self.anno_refs):
+                update_display(ref, display_id=self.disp_id+f"_ref{i}")
 
         speakers = set( seg.speaker_tag for seg in self.raw_tracks)
         speakers = [SPEAKER_ALL, *sorted(speakers)]

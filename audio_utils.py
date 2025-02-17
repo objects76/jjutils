@@ -143,6 +143,15 @@ import simpleaudio # sudo apt-get install libasound2-dev && pip install simpleau
 from pyannote.core import Segment
 import time
 
+from pydub import AudioSegment
+from pydub.generators import Sine
+from pydub.playback import play
+
+def play_beep(frequency=440, dur_sec=0.5):
+    beep = Sine(frequency).to_audio_segment(duration=int(dur_sec*1000))
+    play(beep)
+
+
 def play_audio(file_path: str,
                *,
             #    ranges: list[ tuple[float,float] ]| list[Segment],
