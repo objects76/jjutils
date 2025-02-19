@@ -15,7 +15,7 @@ from collections import deque
 import logging
 logger = logging.getLogger(__name__) # jjutils.diar_debug
 
-from pyannote.core import notebook
+from pyannote.core import notebook, Annotation, Segment
 
 def get_openai():
     import openai # pip install openai
@@ -591,6 +591,7 @@ class DebugDiarUI:
         if video_path:
             self.set_videofile(video_path)
 
+        self.prev_start = 0
         self.prev_end = 0
         self.inter_delay = 0.5
         self.roi_crop = notebook.crop or Segment(0, self.player.audio.duration)
@@ -607,7 +608,7 @@ class DebugDiarUI:
         self.player.set_file(video_path)
         self.video_path = video_path
 
-        self.whisper = HFWhisper(video_path)
+        self.whisper = None # HFWhisper(video_path)
         self.audio_language = 'ja' # 'ko', 'en'
 
     def set_references(self, references:list[Annotation]):
@@ -653,7 +654,7 @@ class DebugDiarUI:
     def update_caching(self, nth, do_translate=True, force_update=False, debug=False):
         trk = self.raw_tracks[nth]
         text_ja = text_ko = ''
-        if self.is_speaker(trk.speaker_tag):
+        if self.whisper and self.is_speaker(trk.speaker_tag):
             trans = self.whisper.transcribe(trk.seg.start, trk.seg.end, force_update=force_update, language=self.audio_language)
             text_ja = trans['text']
             text_ko = ''
@@ -667,6 +668,9 @@ class DebugDiarUI:
             self.update_caching(ith, do_translate=do_translate, force_update=force_update, debug=debug)
 
     def get_script(self):
+        if not self.whisper:
+            return dict()
+
         scripts = []
         for trk in self.raw_tracks:
             text_ja = text_ko = ''
@@ -744,9 +748,13 @@ class DebugDiarUI:
             rgba= notebook[segment_speaker][2] # type: ignore
             )
         # if tag != 'INTER':
+        self.prev_start = start
         self.prev_end = end
 
     def get_text(self, start, end):
+        if not self.whisper:
+            return ('', '')
+
         trans = self.whisper.transcribe(start, end, language=self.audio_language)
         text_ja = trans['text']
         if self.transcribe and self.audio_language != 'ko':
@@ -756,6 +764,7 @@ class DebugDiarUI:
         return (text_ja, text_ko)
 
     async def a_transcribe(self, trk, details):
+        if not self.whisper: return
         import concurrent.futures
         try:
             loop = asyncio.get_event_loop()
