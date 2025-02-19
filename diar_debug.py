@@ -12,6 +12,9 @@ import subprocess, numpy as np
 import pydub
 from collections import deque
 
+import logging
+logger = logging.getLogger(__name__) # jjutils.diar_debug
+
 from pyannote.core import notebook
 
 def get_openai():
@@ -193,6 +196,21 @@ class AudioChunk: # for more fine-controlling(ms).
 #
 async def anullfunc(): pass
 
+
+from pathlib import Path
+import subprocess
+import json
+
+def get_video_resolution(path):
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height", "-of", "json", path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    info = json.loads(result.stdout)
+    stream = info["streams"][0]
+    return stream["width"], stream["height"]
+
 class VlcPlayer:
     def __init__(self, video_path=None, width = 1920*2, height = 1080*2):
         os.environ["VLC_VERBOSE"] = str("-1")
@@ -202,6 +220,11 @@ class VlcPlayer:
         opts.extend('--video-on-top --no-sub-autodetect-file --no-audio'.split())
         if video_path:
             opts.extend(f'--video-title {Path(video_path).stem}'.split())
+
+        # self.width,self.height = self.vlcp.video_get_size()
+        self.width, self.height = get_video_resolution(video_path)
+        if self.width <1280*1.5:
+            opts.append(f"--zoom={1280.0*1.5/self.width:.1f}")
 
         self.instance = vlc.Instance(opts)
         self.vlcp: vlc.MediaPlayer = self.instance.media_player_new() # type: ignore
@@ -261,6 +284,10 @@ class VlcPlayer:
             self.audio.stop()
         # self.vlcp.pause()
 
+    def stop_auto_play(self):
+        self.play_started = []
+        self.play_done = []
+
     in_aplay = False
     requested_segment = (0,0)
     tasks = deque([
@@ -305,7 +332,9 @@ class VlcPlayer:
             self.stop_requested = False
 
             if len(self.play_started) > 10: self.play_started.pop(0)
-            self.play_started.append(start_sec)
+            logger.debug(f"aplay: + playstarted: {start_sec}")
+            self.play_started.append(round(start_sec,3))
+
 
             for start_chunk, end_chunk, sec_type in ranges:
                 if self.stop_requested: break
@@ -332,7 +361,7 @@ class VlcPlayer:
                 self.audio.stop()
             # del start_chunk, end_chunk, sec_type # for
             if len(self.play_done) > 10: self.play_done.pop(0)
-            self.play_done.append(start_sec)
+            self.play_done.append(round(start_sec,3))
         except Exception as ex:
             print("ex:", ex)
             pass
@@ -345,9 +374,11 @@ class VlcPlayer:
         pass
 
     def assure_play_started(self, start_sec:float):
+        start_sec = round(start_sec,3)
         return start_sec in self.play_started
 
     def assure_play_done(self, start_sec:float):
+        start_sec = round(start_sec,3)
         return start_sec in self.play_done
 
     def is_playing(self):
@@ -368,6 +399,7 @@ class VlcPlayer:
             self.audio.forward(sec)
 
     def _draw_text(self, text, *, clr_argb):
+        text_size = int(60*self.width / 1280)
         player = self.vlcp
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Enable, 1)
         player.video_set_marquee_string(vlc.VideoMarqueeOption.Text, text)
@@ -375,7 +407,7 @@ class VlcPlayer:
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Color, clr_argb|0xff000000)  # Red
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Opacity, 255)
         player.video_set_marquee_int(vlc.VideoMarqueeOption.Timeout, 0)
-        player.video_set_marquee_int(vlc.VideoMarqueeOption.Size, 60)
+        player.video_set_marquee_int(vlc.VideoMarqueeOption.Size, text_size)
         self.text = text
 
 
@@ -649,41 +681,38 @@ class DebugDiarUI:
             segments=scripts)
 
     async def aplay_all(self, trks, slider:widgets.IntSlider):
-        # print('0. aplay_all done', self.is_playall)
+        logger.debug(f'0. aplay_all enter {self.is_playall}')
         try:
-            seg = trks[slider.value]
-            self._play(seg.speaker_tag, seg.seg.start, seg.seg.end)
-
-            while not self.player.assure_play_started(seg.seg.start):
-                await asyncio.sleep(0.1)
-            # print('wait start', seg.seg.start)
-
-            while not self.player.assure_play_done(seg.seg.start):
-                await asyncio.sleep(0.1)
-            # print('wait done', seg.seg.start)
-
-
+            # start with next segment.
             while slider.value < slider.max:
-                slider.value = slider.value + 1
+                slider.value = slider.value + 1 # it will trig the next segment playing.
                 start_sec = trks[slider.value].seg.start
 
+                logger.debug(f'play_all.{slider.value} wait started, {start_sec}')
                 while not self.player.assure_play_started(start_sec):
                     await asyncio.sleep(0.1)
-                # print('wait start', start_sec)
 
+                logger.debug(f'play_all.{slider.value} wait done, {start_sec}')
                 while not self.player.assure_play_done(start_sec):
                     await asyncio.sleep(0.1)
-                # print('wait done', start_sec)
 
                 if not self.is_playall: break
                 if self.inter_delay> 0:
                     await asyncio.sleep(self.inter_delay) # interval between segments
+
+
+            logger.debug(f'play_all.x: done')
 
         except AttributeError as ex:
             print('aplay_all.ex:', ex)
             pass
         # print('1. aplay_all done', self.is_playall)
         self.is_playall = False
+        logger.debug(f'play_all.x: done, {self.is_playall}')
+        self.player.stop_auto_play()
+
+
+
 
     task_playall = None
     def on_play_all(self, btn, trks, slider:widgets.IntSlider):
@@ -762,10 +791,16 @@ class DebugDiarUI:
             print(f"#{len(self.rename_history)}: {self.rename_history}")
         elif isinstance(tags, str):
             tagmaps = dict()
-            tokens:list[str] = tags.split()
+            tokens:list[str] = re.split(r'[\s,]+', tags.strip())
+
+            nums = []
             for i in range(len(tokens)):
                 if tokens[i].isdecimal():
-                    tagmaps[int(tokens[i])] = tokens[i+1]
+                    nums.append(int(tokens[i]))
+                else:
+                    for idx in nums:
+                        tagmaps[idx] = f"{tokens[i]},S{idx:02d}"
+                    nums = []
             self.rename_speakers(tagmaps)
 
 
@@ -780,7 +815,7 @@ class DebugDiarUI:
                 break
             if prefix is None: return
 
-
+        # new_tag = new_tag+tag.replace("SPEAKER_", "_S")
         if tag in self.rename_history and self.rename_history[tag] == new_tag:
             return
 
@@ -805,12 +840,11 @@ class DebugDiarUI:
     def set_current_segment(self, trk):
         # restore old segment
         if self.cur_track:
-            seg,tn,label = self.cur_track
-            self.anno[seg,tn] = label
+            del self.anno[*self.cur_track]
 
-        self.cur_track = trk
-        seg,tn,label = self.cur_track
-        self.anno[seg,tn] = "CUR"
+        seg,tn,label = trk
+        self.cur_track = (seg,'_CUR')
+        self.anno[*self.cur_track] = "CUR"
 
         # readjust notebook.crop
         if seg not in notebook.crop:
@@ -920,7 +954,7 @@ class DebugDiarUI:
 
         self.speaker_filter == SPEAKER_ALL
         self.disp_id = str(time.time())
-        notebook['CUR'] = ("solid", 10, (0,0,0))
+        notebook['CUR'] = ("solid", 10, (1,0,1))
         display( self.anno, display_id=self.disp_id)
         for i, ref in enumerate(self.anno_refs):
             display( ref, display_id=self.disp_id+f"_ref{i}")
