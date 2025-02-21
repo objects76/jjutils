@@ -196,6 +196,8 @@ class AudioChunk: # for more fine-controlling(ms).
 #
 async def anullfunc(): pass
 
+HEAD_PLAY = 3 # sec
+TAIL_PLAY = 3 # sec
 
 from pathlib import Path
 import subprocess
@@ -212,7 +214,9 @@ def get_video_resolution(path):
     return stream["width"], stream["height"]
 
 class VlcPlayer:
-    def __init__(self, video_path=None, width = 1920*2, height = 1080*2):
+    def __init__(self, video_path=None,
+                 width = 1920*2, height = 1080*2,
+                 head_play=None, tail_play=None):
         os.environ["VLC_VERBOSE"] = str("-1")
         os.environ["LIBVA_MESSAGING_LEVEL"] = str("0")
 
@@ -235,6 +239,8 @@ class VlcPlayer:
         self.async_play_task = None
         self.text = ''
 
+        self.head_play = head_play or HEAD_PLAY
+        self.tail_play = tail_play or TAIL_PLAY
         self.play_boundary = False
         self.play_to_end = False
         self.play_started = []
@@ -319,7 +325,8 @@ class VlcPlayer:
         try:
             duration = end_sec - start_sec
             if duration > 8*1.2 and self.play_boundary and not self.play_to_end:
-                ranges = [(start_sec, start_sec+4, 's.'), (end_sec-3, end_sec, 'e.')]
+                ranges = [(start_sec, start_sec+self.head_play, 's.'),
+                          (end_sec-self.tail_play, end_sec, 'e.')]
             else:
                 ranges = [(start_sec, end_sec, '')]
             # beep-end notifier
@@ -575,19 +582,21 @@ from jjutils.diar_utils import (
 from pyannote.core import Annotation, Segment
 from collections import namedtuple
 
+
 SPEAKER_ALL = 'AllSpeaker'
 Speaker = namedtuple('Speaker', ['seg', 'track', 'speaker_tag'])
 
 class DebugDiarUI:
     _player = None
-    def __init__(self, *, video_path = None, transcribe=False) -> None:
+    def __init__(self, *, video_path = None, head_play=None, tail_play=None, transcribe=False) -> None:
         if DebugDiarUI._player:
             DebugDiarUI._player.clear()
 
         self.speaker_order = dict()
 
         self.speaker_filter = None
-        self.player = DebugDiarUI._player = VlcPlayer(video_path)
+        self.player = DebugDiarUI._player = VlcPlayer(video_path,
+                                                      head_play=head_play, tail_play=tail_play)
         if video_path:
             self.set_videofile(video_path)
 
