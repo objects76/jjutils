@@ -61,11 +61,16 @@ def set_default_logger():
             else:
                 record.pathname = record.pathname.replace(os.getcwd(), '.')
                 record.pathname = record.pathname.replace('/home/jjkim/anaconda3/envs/pyan320-weaviate/lib/python3.10/site-', './')
+
             record.color_code = self.COLORS.get(record.levelno, "")
             record.reset_code = "\33[0m"
             record.name = record.name[-15:]
+            format = super().format(record)
 
-            return super().format(record)
+            if record.levelno >= logging.WARNING:
+                format = self.COLORS.get(record.levelno, "") + format.replace('\33[0m', '') + "\33[0m"
+            return format
+
 
     for handler in logging.getLogger().handlers:
         handler.setFormatter(CustomFormatter(
