@@ -576,12 +576,12 @@ from IPython.display import display, update_display
 import ipywidgets as widgets
 from functools import singledispatch, singledispatchmethod
 from jjutils.diar_utils import (
-    annotation_to_pklsegments
+    repr_annotations,
+    repr_annotation2
 )
 
 from pyannote.core import Annotation, Segment
 from collections import namedtuple
-
 
 SPEAKER_ALL = 'AllSpeaker'
 Speaker = namedtuple('Speaker', ['seg', 'track', 'speaker_tag'])
@@ -860,9 +860,10 @@ class DebugDiarUI:
     def update_crop(self, inc_sec):
         cur = notebook.crop
         notebook.crop = Segment(cur.start+inc_sec,cur.end+inc_sec)
-        update_display(self.anno, display_id=self.disp_id)
-        for i, ref in enumerate(self.anno_refs):
-            update_display( ref, display_id=self.disp_id+f"_ref{i}")
+        self.update_annos()
+        # update_display(self.anno, display_id=self.disp_id)
+        # for i, ref in enumerate(self.anno_refs):
+        #     update_display( ref, display_id=self.disp_id+f"_ref{i}")
 
         # crop region is changed. so get val in notebook.crop
         for i_slider, trk in enumerate(self.roi_tracks):
@@ -889,9 +890,10 @@ class DebugDiarUI:
             # print(f"new: {notebook.crop=} -> {s}, {e}")
             notebook.crop = Segment(s,e)
 
-        update_display(self.anno, display_id=self.disp_id)
-        for i, ref in enumerate(self.anno_refs):
-            update_display( ref, display_id=self.disp_id+f"_ref{i}")
+        self.update_annos()
+        # update_display(self.anno, display_id=self.disp_id)
+        # for i, ref in enumerate(self.anno_refs):
+        #     update_display( ref, display_id=self.disp_id+f"_ref{i}")
 
         if self.log_dispid is None:
             self.log_dispid = 'logdisp'
@@ -1032,6 +1034,20 @@ class DebugDiarUI:
         ui.children = vbox.children
         return ui
 
+    def update_annos(self):
+        annos = [self.anno, *self.anno_refs]
+        if self.anno_disp_id:
+            # update_display(repr_annotations(annos), display_id=self.anno_disp_id)
+            for i, ref in enumerate(self.anno_refs):
+                update_display(repr_annotation2(ref, time=True), display_id=self.anno_disp_id+f"_ref{i}")
+            update_display( self.anno , display_id=self.anno_disp_id)
+        else:
+            self.anno_disp_id = str(time.time())
+            # display(repr_annotations(annos), display_id=self.anno_disp_id)
+            for i, ref in enumerate(self.anno_refs):
+                display( repr_annotation2(ref, time=True), display_id=self.anno_disp_id+f"_ref{i}")
+            display( self.anno, display_id=self.anno_disp_id)
+
 
     def _setup_ui(self):
         self.roi_widgets = None
@@ -1041,13 +1057,10 @@ class DebugDiarUI:
 
 
         self.speaker_filter == SPEAKER_ALL
-        self.disp_id = str(time.time())
         notebook['CUR'] = ("solid", 5, (1,0,1))
-        display( self.anno, display_id=self.disp_id)
-        for i, ref in enumerate(self.anno_refs):
-            display( ref, display_id=self.disp_id+f"_ref{i}")
 
-        # update_display( self.anno , display_id=self.disp_id)
+        self.anno_disp_id = ""
+        self.update_annos()
 
         lbl_title = widgets.Label(value= f"[ {self.video_path} ]")
         lbl_title.layout = widgets.Layout(margin='0 0 0 20px')
@@ -1061,11 +1074,10 @@ class DebugDiarUI:
                 self.roi_tracks = [item for item in self.raw_tracks if item.speaker_tag == speaker]
             self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
-
-            update_display( self.anno , display_id=self.disp_id)
-
-            for i, ref in enumerate(self.anno_refs):
-                update_display(ref, display_id=self.disp_id+f"_ref{i}")
+            self.update_annos()
+            # update_display( self.anno , display_id=self.disp_id)
+            # for i, ref in enumerate(self.anno_refs):
+            #     update_display(ref, display_id=self.disp_id+f"_ref{i}")
 
         speakers = set( seg.speaker_tag for seg in self.raw_tracks)
         speakers = [SPEAKER_ALL, *sorted(speakers)]

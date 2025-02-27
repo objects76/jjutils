@@ -331,20 +331,6 @@ def segments_to_pickle(segments:list[PklSegment], pickle_file:str):
 #
 # DER
 #
-def _plot_anno(diar, title=None):
-    from pyannote.core.notebook import notebook
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(20, 2))
-    notebook.plot_annotation(diar)
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('Speakers')
-    if title:
-        plt.title(title, loc='right')
-        # plt.savefig(title+'.png')
-    plt.show()
-
-
-
 def get_der(rttm_pred, rttm_gt, plot=False):
     from pyannote.database.util import load_rttm
     from pyannote.metrics.diarization import DiarizationErrorRate
@@ -370,3 +356,50 @@ def get_der(rttm_pred, rttm_gt, plot=False):
         # _plot_anno(groundtruth, 'groundtruth')
 
     return der
+
+#
+# pyannote plot things
+#
+
+from pyannote.core.notebook import print_figure
+from pyannote.core import Annotation, notebook
+from IPython.display import Image
+import matplotlib.pyplot as plt
+
+def repr_annotation2(annotation: Annotation, time=True):
+    figsize = plt.rcParams["figure.figsize"] # backup
+    plt.rcParams["figure.figsize"] = (notebook.width, 2)
+    fig, ax = plt.subplots()
+    notebook.plot_annotation(annotation, ax=ax, time=time)
+    data = print_figure(fig, "png")
+    plt.close(fig)
+    plt.rcParams["figure.figsize"] = figsize # restore
+    return Image(data)
+
+
+def repr_annotations(annotations: list[Annotation]):
+    """Get `png` data for `annotation`"""
+
+    figsize = plt.rcParams["figure.figsize"] # backup
+
+    # annotation 개수에 맞춰 서브플롯 행의 수를 설정 (하나의 열)
+    n = len(annotations)
+    figsize = (notebook.width, n * 2)  # 각 subplot의 높이를 1로 가정
+    fig, axs = plt.subplots(n, 1, figsize=figsize, sharex=True)
+
+    # subplot이 하나인 경우 리스트로 변환
+    if n == 1:
+        axs = [axs]
+
+    last_n = n-1
+    # 각 subplot에 annotation을 그립니다.
+    for i, (ax, anno) in enumerate(zip(axs, annotations)):
+        notebook.plot_annotation(anno, ax=ax, time=(i == last_n))
+
+    data = print_figure(fig, "png")
+    plt.close(fig)
+
+    plt.rcParams["figure.figsize"] = figsize # restore
+    return Image(data)
+# import pyannote.core.notebook as notebook_module
+# notebook_module.repr_annotations = repr_annotations

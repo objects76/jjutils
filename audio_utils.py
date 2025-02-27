@@ -154,8 +154,7 @@ def play_beep(frequency=440, dur_sec=0.5):
 
 def play_audio(file_path: str,
                *,
-            #    ranges: list[ tuple[float,float] ]| list[Segment],
-               ranges: Iterable,
+               ranges: list[Segment],
                speed: float = 1.0,
                start_end_notifier = True):
     # Load the full audio file
@@ -173,7 +172,7 @@ def play_audio(file_path: str,
     segments = []
     for (start, end) in ranges:
         # Extract the specific range (times are in milliseconds)
-        segment = audio[start * 1000:end * 1000]
+        segment = audio[int(start * 1000):int(end * 1000)]
         if start_end_notifier:
             segment = beep_start + segment + beep_end + mute
 
@@ -185,11 +184,11 @@ def play_audio(file_path: str,
 
         segments.append(segment)
 
+    n_total = len(segments)
     from IPython.display import display, update_display, DisplayHandle
-    handle = cast(DisplayHandle, display('', display_id=True))
+    handle = cast(DisplayHandle, display('', display_id=True)) if n_total>1 else None
 
     # Play each segment
-    n_total = len(segments)
     for i, (segment, (start,end)) in enumerate(zip(segments, ranges), start=1):
         # Convert segment to raw audio data for playback
         # print(f'{start:.1f} ~ {end.1f}: {end-start:.1f}sec')
@@ -197,7 +196,8 @@ def play_audio(file_path: str,
         wave_obj = simpleaudio.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
-        update_display(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}', display_id=handle.display_id)
+        if handle:
+            update_display(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}', display_id=handle.display_id)
         if len(ranges) == 1:
             return play_obj
 
