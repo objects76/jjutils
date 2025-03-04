@@ -36,6 +36,19 @@ def static_vars(**kwargs):
         return func
     return decorate
 
+def devlog(*argv, **kwargv):
+    frame = inspect.currentframe().f_back # type: ignore
+    info = inspect.getframeinfo(frame) # type: ignore
+    caller = info.function
+    line_no = info.lineno
+    src_path = info.filename
+    if src_path.startswith("/tmp/ipykernel"):
+        src_path = './notebook'
+    else:
+        src_path = src_path.replace(os.getcwd(), '.')
+
+    kwargv['end'] = kwargv.get('end', '') + f" at {caller}() {src_path}:{line_no}\n"
+    print(*argv, **kwargv)
 
 def set_default_logger():
     import logging

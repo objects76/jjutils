@@ -166,7 +166,7 @@ def play_audio(file_path: str,
         beep_volume = -20  # reduce the beep volume in dB
         beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
         beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
-        mute = AudioSegment.silent(duration=800)
+        mute = AudioSegment.silent(duration=1000)
 
 
     segments = []
@@ -175,6 +175,7 @@ def play_audio(file_path: str,
         segment = audio[int(start * 1000):int(end * 1000)]
         if start_end_notifier:
             segment = beep_start + segment + beep_end + mute
+            # segment = segment + beep_end + mute
 
         # Speed up the segment
         if speed != 1.0:
@@ -302,15 +303,15 @@ from pyannote.core import Segment, Timeline, Annotation
 from typing import Final
 
 
-def play_tensor(audio_tensor:torch.Tensor, play_sec:int=999, sr=16000):
+def play_tensor(audio_tensor:torch.Tensor, play_sec:float=999, sr=16000):
     if audio_tensor.dtype == torch.int16:
         audio_tensor = audio_tensor.float() / 32768.0
-        print(audio_tensor.shape, audio_tensor.dtype)
+        # print(audio_tensor.shape, audio_tensor.dtype)
 
     audio_data = audio_tensor.squeeze().numpy()
     assert audio_data.dtype == np.float32, f"np.float32? {audio_data.dtype}"
     assert audio_data.ndim == 1, f"ndim==1? {audio_data.ndim=} {audio_data.shape=}"
-    audio_data = audio_data[:16000*play_sec]
+    audio_data = audio_data[:int(16000*play_sec)]
     assert -1 <= torch.min(audio_tensor) and torch.max(audio_tensor) <= 1, f"[-1,1] =? {torch.min(audio_tensor)} ~ {torch.max(audio_tensor)}"
     audio_data = (audio_data * 32767).astype(np.int16) # normalized float -> int16
     try:
