@@ -156,7 +156,8 @@ def play_audio(file_path: str,
                *,
                ranges: list[Segment],
                speed: float = 1.0,
-               start_end_notifier = True):
+               start_end_notifier = True,
+               output_m4a:str = ""):
     # Load the full audio file
     audio = AudioSegment.from_file(file_path)
 
@@ -185,9 +186,21 @@ def play_audio(file_path: str,
 
         segments.append(segment)
 
+    # Export each segment to an audio file
+    if output_m4a.endswith('.m4a'):
+        combined_audio = AudioSegment.silent(duration=0)  # Start with a silent audio segment
+        for i, (segment, (start, end)) in enumerate(zip(segments, ranges), start=1):
+            # Append the segment to the combined audio
+            combined_audio += segment
+
+        # Export the combined audio to a file
+        combined_audio.export(output_m4a, format="ipod")  # Use 'ipod' for m4a format
+        print(f"Exported combined audio to {output_m4a}")
+
+
     n_total = len(segments)
     from IPython.display import display, update_display, DisplayHandle
-    handle = cast(DisplayHandle, display('', display_id=True)) if n_total>1 else None
+    handle = cast(DisplayHandle, display('', display_id=True)) if n_total>=3 else None
 
     # Play each segment
     for i, (segment, (start,end)) in enumerate(zip(segments, ranges), start=1):
@@ -197,8 +210,11 @@ def play_audio(file_path: str,
         wave_obj = simpleaudio.WaveObject(raw_data, num_channels=segment.channels,
                                  bytes_per_sample=segment.sample_width, sample_rate=segment.frame_rate)
         play_obj = wave_obj.play()
-        if handle:
-            update_display(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}', display_id=handle.display_id)
+        if handle and i>=3:
+            update_display(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}',
+                           display_id=handle.display_id)
+        else:
+            print(f'> {start:.3f} ~ {end:.3f}({end-start:.3f}), {i}/{n_total}')
         if len(ranges) == 1:
             return play_obj
 
