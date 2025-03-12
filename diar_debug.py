@@ -590,28 +590,46 @@ CROP_STEP = 300
 
 from pyannote.core import Annotation, Segment
 
+def get_seginfo(tick: float | Segment, dir:int, anno: Annotation) -> tuple[Segment, str] | None:
+    assert anno
+    self = get_seginfo
+    if anno != self.anno:
+        self.anno = anno
+        tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
+        self.tracks = list(anno.itertracks(yield_label=True))
+        self.idx = -1
+        for i, (seg,_,lbl) in enumerate(self.tracks):
+            if seg.start <= tick_sec <= seg.end:
+                self.idx = i
+                break
+        if self.idx < 0:
+            if tick_sec != 0:
+                print(f'err: no idx for {tick}')
+                return None
+            self.idx = 0
+            dir = 0
+
+    if dir > 0:
+        self.idx = min(len(self.tracks), self.idx+1)
+    elif dir < 0:
+        self.idx = max(0, self.idx-1)
+
+    seg, _, label = self.tracks[self.idx]
+    return seg, label
+
+get_seginfo.tracks = None
+get_seginfo.anno = Annotation()
+get_seginfo.idx = None
+
+
 def get_current_seg(tick: float | Segment, anno: Annotation) -> tuple[Segment, str] | None:
-    tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
-    for seg,_,lbl in anno.itertracks(yield_label=True):
-        if seg.start <= tick_sec <= seg.end:
-            return seg, lbl
-    return None
+    return get_seginfo(tick, 0, anno)
 
 def get_next_seg(tick: float | Segment, anno: Annotation) -> tuple[Segment, str] | None:
-    tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
-    for seg,_,lbl in anno.itertracks(yield_label=True):
-        if seg.start > tick_sec:
-            return seg, lbl
-    return None
+    return get_seginfo(tick, 1, anno)
 
 def get_prev_seg(tick: float | Segment, anno: Annotation) -> tuple[Segment, str] | None:
-    tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
-    prev = None
-    for seg,_,lbl in anno.itertracks(yield_label=True):
-        if seg.start <= tick_sec <= seg.end:
-            return prev
-        prev = (seg,lbl)
-    return None
+    return get_seginfo(tick, -1, anno)
 
 
 
@@ -904,7 +922,7 @@ class DebugDiarUI:
                 break
         # self.slider.value = -100
 
-    def set_current_segment(self, trk):
+    def update_anno_ui(self, trk):
         # restore old segment
         if self.cur_track:
             del self.current_anno[*self.cur_track]
@@ -922,8 +940,9 @@ class DebugDiarUI:
             e = min(self.roi_crop.end, s+CROP_STEP)
             # print(f"new: {notebook.crop=} -> {s}, {e}")
             notebook.crop = Segment(s,e)
-
-        self.update_annos()
+            self.update_annos()
+        else:
+            self.update_annos(active_only=True)
         # update_display(self.anno, display_id=self.disp_id)
         # for i, ref in enumerate(self.anno_refs):
         #     update_display( ref, display_id=self.disp_id+f"_ref{i}")
@@ -936,17 +955,12 @@ class DebugDiarUI:
 
 
     def play_segment(self, direction:int):
-        try:
-            if direction>0:
-                trk = get_next_seg(self.current_seg, self.current_anno)
-            elif direction<0:
-                trk = get_prev_seg(self.current_seg, self.current_anno)
-            else:
-                trk = get_current_seg(self.current_seg, self.current_anno)
-        except Exception as e:
-            print('ex:', e)
-            print(f"{self.current_seg=}, {direction=}")
-            return
+        if direction>0:
+            trk = get_next_seg(self.current_seg, self.current_anno)
+        elif direction<0:
+            trk = get_prev_seg(self.current_seg, self.current_anno)
+        else:
+            trk = get_current_seg(self.current_seg, self.current_anno)
         if trk is None: return
 
         self.current_seg, speaker_tag = trk
@@ -955,8 +969,7 @@ class DebugDiarUI:
         seg = self.current_seg&self.roi_crop
         range = f"{to_hhmmss(seg.start)} ~ {to_hhmmss(seg.end)} / <span style='color: green;'>{seg.start:.3f} ~ {seg.end:.3f}</span> ({seg.duration:.3f})"
 
-        self.set_current_segment((seg,speaker_tag,None))
-
+        self.update_anno_ui((seg,speaker_tag,None))
 
         text_ja = text_ko = ''
         self.details.value = (f"Range= {range}     "
@@ -1005,15 +1018,20 @@ class DebugDiarUI:
         return ui
 
 
-    def update_annos(self):
+    def update_annos(self, active_only=False):
         if self.anno_disp_id:
-            # update_display(repr_annotations(annos), display_id=self.anno_disp_id)
             for i, ref in enumerate(self.annotations):
-                update_display(repr_annotation2(ref, time=True), display_id=self.anno_disp_id+f"_ref{i}")
+                if self.current_anno == ref or not active_only:
+                    update_display(repr_annotation2(ref, time=True),
+                                   display_id=self.anno_disp_id+f"_ref{i}")
         else:
             self.anno_disp_id = str(time.time())
             for i, ref in enumerate(self.annotations):
-                display( repr_annotation2(ref, time=True), display_id=self.anno_disp_id+f"_ref{i}")
+                if self.current_anno == ref or not active_only:
+                    display( repr_annotation2(ref, time=True),
+                            display_id=self.anno_disp_id+f"_ref{i}")
+
+
 
 
     def _select_annotation(self, change):
@@ -1024,7 +1042,7 @@ class DebugDiarUI:
 
         for anno in [self.current_anno, *self.annotations]:
             if anno.title == new_anno_title:
-                self.set_current_segment(None) # clear previous play mark.
+                self.update_anno_ui(None) # clear previous play mark.
                 self.current_anno = anno
                 self.play_segment(0)
         # self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
