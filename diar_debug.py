@@ -16,7 +16,7 @@ import logging
 logger = logging.getLogger(__name__) # jjutils.diar_debug
 
 from pyannote.core import notebook, Annotation, Segment
-
+from IPython.display import display, Image
 def get_openai():
     import openai # pip install openai
     if get_openai._openai is None:
@@ -592,34 +592,30 @@ from pyannote.core import Annotation, Segment
 
 def get_seginfo(tick: float | Segment, dir:int, anno: Annotation) -> tuple[Segment, str] | None:
     assert anno
+    tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
     self = get_seginfo
     if anno != self.anno:
         self.anno = anno
-        tick_sec = (tick.start + tick.end) / 2 if isinstance(tick, Segment) else tick
         self.tracks = list(anno.itertracks(yield_label=True))
-        self.idx = -1
-        for i, (seg,_,lbl) in enumerate(self.tracks):
-            if seg.start <= tick_sec <= seg.end:
-                self.idx = i
-                break
-        if self.idx < 0:
-            if tick_sec != 0:
-                print(f'err: no idx for {tick}')
-                return None
-            self.idx = 0
-            dir = 0
 
-    if dir > 0:
-        self.idx = min(len(self.tracks), self.idx+1)
-    elif dir < 0:
-        self.idx = max(0, self.idx-1)
+    idx = -1
+    for i, (seg,_,lbl) in enumerate(self.tracks):
+        if seg.start <= tick_sec <= seg.end:
+            idx = i
+            break
+    if idx < 0:
+        if tick_sec != 0:
+            print(f'err: no idx for {tick}')
+            return None
+        idx, dir = 0, 0
 
-    seg, _, label = self.tracks[self.idx]
+    idx = max(0, min(idx+dir, len(self.tracks) - 1))
+
+    seg, _, label = self.tracks[idx]
     return seg, label
 
 get_seginfo.tracks = None
 get_seginfo.anno = Annotation()
-get_seginfo.idx = None
 
 
 def get_current_seg(tick: float | Segment, anno: Annotation) -> tuple[Segment, str] | None:
@@ -673,27 +669,11 @@ class DebugDiarUI:
         self.annotations = annotations
 
     def set_current_anno(self, anno:Annotation, *, start_sec = 0, min_sec = 0):
-        self.raw_tracks = []
-        iter_tracks = cast(
-            Iterator[tuple[Segment, str, str]],
-            anno.itertracks(yield_label=True))
-
-        for turn, track, speaker_tag in iter_tracks:
-            if turn.end - turn.start >= min_sec: # filtering, optional
-                if seg := turn&self.roi_crop:
-                    self.raw_tracks.append( Speaker(turn, track, speaker_tag) )
-
         self.current_anno = anno
         self.speaker_order = {label: i for i, label in enumerate(self.current_anno.labels())}
 
         notebook.crop = Segment(
-            self.roi_crop.start, min(self.raw_tracks[-1].seg.end, self.roi_crop.start + CROP_STEP))
-
-        # find near segment.
-        self.cur_segidx = 0
-        for i, seg in enumerate(self.raw_tracks):
-            if seg.seg.start > start_sec: break
-            self.cur_segidx = i
+            self.roi_crop.start, min(self.roi_crop.end, self.roi_crop.start + CROP_STEP))
 
         self._setup_ui()
 
@@ -711,37 +691,12 @@ class DebugDiarUI:
         return True
 
     def update_caching(self, nth, do_translate=True, force_update=False, debug=False):
-        trk = self.raw_tracks[nth]
-        text_ja = text_ko = ''
-        if self.whisper and self.is_speaker(trk.speaker_tag):
-            trans = self.whisper.transcribe(trk.seg.start, trk.seg.end, force_update=force_update, language=self.audio_language)
-            text_ja = trans['text']
-            text_ko = ''
-            if self.audio_language != 'ko' and do_translate:
-                text_ko = translate(text_ja, force_update)
-            if debug:
-                print(f'{trk.start_sec}~{trk.end_sec}:\n{text_ja}\n{text_ko}')
-
+        ...
     def caching(self, do_translate=True, force_update=False, debug=False):
-        for ith in range(len(self.raw_tracks)):
-            self.update_caching(ith, do_translate=do_translate, force_update=force_update, debug=debug)
-
+        ...
     def get_script(self):
-        if not self.whisper:
-            return dict()
-
-        scripts = []
-        for trk in self.raw_tracks:
-            text_ja = text_ko = ''
-            if self.is_speaker(trk.speaker_tag):
-                tag = trk.speaker_tag
-                start, end = trk.seg.start, trk.seg.end
-                text_ja, text_ko = self.get_text(start,end)
-            scripts.append( dict(start=round(start,3), end=round(end,3), speaker=tag, text_ja=text_ja, text_ko=text_ko) )
-        return dict(
-            media= str(self.video_path),
-            stt=type(self.whisper).__name__,
-            segments=scripts)
+        ...
+        return dict()
 
     async def aplay_all(self, trks, slider:widgets.IntSlider):
         logger.debug(f'0. aplay_all enter {self.is_playall}')
@@ -908,19 +863,19 @@ class DebugDiarUI:
     def update_crop(self, inc_sec):
         cur = notebook.crop
         notebook.crop = Segment(cur.start+inc_sec,cur.end+inc_sec)
+        notebook.crop = notebook.crop & self.roi_crop
+        # print(f"new {notebook.crop= }")
         self.update_annos()
-        # update_display(self.anno, display_id=self.disp_id)
-        # for i, ref in enumerate(self.anno_refs):
-        #     update_display( ref, display_id=self.disp_id+f"_ref{i}")
 
         # crop region is changed. so get val in notebook.crop
-        for i_slider, trk in enumerate(self.roi_tracks):
-            # get val in notebook.crop.
-            if trk.seg in notebook.crop:
-                # self.slider.value = i_slider
-                print('update_crop:', trk.seg, notebook.crop, i_slider)
-                break
-        # self.slider.value = -100
+        if self.current_seg not in notebook.crop:
+            for seg, _ in self.current_anno.itertracks():
+                if seg in notebook.crop:
+                    self.current_seg = seg
+                    # print(f"new {self.current_seg= }")
+                    break
+        pass
+
 
     def update_anno_ui(self, trk):
         # restore old segment
@@ -1017,8 +972,8 @@ class DebugDiarUI:
         ui.children = vbox.children
         return ui
 
-
     def update_annos(self, active_only=False):
+
         if self.anno_disp_id:
             for i, ref in enumerate(self.annotations):
                 if self.current_anno == ref or not active_only:
@@ -1076,10 +1031,10 @@ class DebugDiarUI:
         def select_speaker(change):
             speaker = change['new']
             self.speaker_filter = speaker
-            if speaker == SPEAKER_ALL:
-                self.roi_tracks = self.raw_tracks
-            else:
-                self.roi_tracks = [item for item in self.raw_tracks if item.speaker_tag == speaker]
+            # if speaker == SPEAKER_ALL:
+            #     self.roi_tracks = self.raw_tracks
+            # else:
+            #     self.roi_tracks = [item for item in self.raw_tracks if item.speaker_tag == speaker]
             self.roi_widgets = self._interact_video(f'diar: {speaker}', ui=self.roi_widgets)
             # slider = [w for w in self.roi_widgets.children if isinstance(w, widgets.IntSlider)]
             self.update_annos()
@@ -1087,7 +1042,7 @@ class DebugDiarUI:
             # for i, ref in enumerate(self.anno_refs):
             #     update_display(ref, display_id=self.disp_id+f"_ref{i}")
 
-        speakers = set( seg.speaker_tag for seg in self.raw_tracks)
+        speakers = self.current_anno.labels() # set( seg.speaker_tag for seg in self.raw_tracks)
         speakers = [SPEAKER_ALL, *sorted(speakers)]
         dd_speaker = widgets.Dropdown(options=speakers, description='Speaker: ')
         dd_speaker.observe(select_speaker, names='value')
