@@ -609,7 +609,10 @@ def get_seginfo(tick: float | Segment, dir:int, anno: Annotation) -> tuple[Segme
             return None
         idx, dir = 0, 0
 
-    idx = max(0, min(idx+dir, len(self.tracks) - 1))
+    idx += dir
+    if idx < 0 or len(self.tracks) <= idx:
+        # out of range
+        return None
 
     seg, _, label = self.tracks[idx]
     return seg, label
@@ -698,20 +701,22 @@ class DebugDiarUI:
         ...
         return dict()
 
-    async def aplay_all(self, trks, slider:widgets.IntSlider):
+    async def aplay_all(self):
         logger.debug(f'0. aplay_all enter {self.is_playall}')
         try:
-            # start with next segment.
-            while slider.value < slider.max:
-                slider.value = slider.value + 1 # it will trig the next segment playing.
-                start_sec = trks[slider.value].seg.start
+            _seg = Segment(0,0)
 
-                logger.debug(f'play_all.{slider.value} wait started, {start_sec}')
-                while not self.player.assure_play_started(start_sec):
+            while True:
+                self.play_segment(1)
+                if _seg == self.current_seg: break
+                _seg = self.current_seg
+
+                logger.debug(f'play_all wait started, {_seg}')
+                while not self.player.assure_play_started(_seg.start):
                     await asyncio.sleep(0.1)
 
-                logger.debug(f'play_all.{slider.value} wait done, {start_sec}')
-                while not self.player.assure_play_done(start_sec):
+                logger.debug(f'play_all wait done, {_seg.start}')
+                while not self.player.assure_play_done(_seg.start):
                     await asyncio.sleep(0.1)
 
                 if not self.is_playall: break
@@ -733,13 +738,13 @@ class DebugDiarUI:
 
 
     task_playall = None
-    def on_play_all(self, btn, trks, slider:widgets.IntSlider):
+    def on_play_all(self, btn):
         self.is_playall = not self.is_playall
         if self.is_playall:
             assert self.task_playall is None
             btn.icon = 'pause'
             btn.description = 'pause'
-            self.task_playall = asyncio.create_task(self.aplay_all(trks, slider))
+            self.task_playall = asyncio.create_task(self.aplay_all())
         else:
             btn.icon = 'play'
             btn.description = 'playall'
@@ -954,7 +959,7 @@ class DebugDiarUI:
 
 
         replay_btn.on_click(lambda btn: self.play_segment(0))
-        # playall_btn.on_click(lambda btn: self.on_play_all(btn, self.roi_tracks, slider))
+        playall_btn.on_click(lambda btn: self.on_play_all(btn))
         btn_prev.on_click(lambda b: self.play_segment(-1))
         btn_next.on_click(lambda b: self.play_segment(+1))
         prev_crop.on_click(lambda b: self.update_crop(-CROP_STEP))
