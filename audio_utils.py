@@ -66,47 +66,44 @@ FFMPEG = 'ffmpeg -nostats -hide_banner -y '
 # sound = pydub.AudioSegment.from_file('testdata/jp.20240319.mp4').set_channels(1)
 # sound.export("tmp/jp.20240319.wav", format="wav", codec='pcm_s16le', bitrate='128k', parameters="-ar 16000".split())
 
-def get_audio(mp4file, *, outdir='./tmp', start_time = 0, end_time = 0, audio_type = 'mp3') ->str:
+def get_audio(mp4file, *, outdir='./tmp', start_time = 0., end_time = 0., audio_type = 'mp3') ->str:
     """
     get audio file from mp4 file
     """
-    if isinstance(start_time, int) and isinstance(end_time, int):
-        ssec = start_time
-        esec = end_time
-    else:
+    ssec = start_time
+    esec = end_time
+    if isinstance(start_time, str) and isinstance(end_time, str):
         ssec, esec = time_to_seconds(start_time), time_to_seconds(end_time)
 
+    ext = audio_type if audio_type[0] == '.' else '.'+audio_type
     if esec - ssec <= 0:
-        audio_file = mp4file.replace('.mp4', f'.{audio_type}')
+        output_path = mp4file.replace('.mp4', ext)
     else:
-        audio_file = mp4file.replace('.mp4', f'-{ssec}_{esec}.{audio_type}')
-        assert False, 'deprecated with start, end'
+        output_path = mp4file.replace('.mp4', f'-{ssec}_{esec}{ext}')
+        # assert False, 'deprecated with start, end'
 
-    audio_file = Path(mp4file).with_suffix('.'+audio_type)
-
-    audio_file = Path(outdir) / Path(audio_file).name
-
-    if not Path(audio_file).exists() or False:
+    output_path = Path(outdir) / Path(output_path).name
+    if not output_path.exists() or False:
         Path(outdir).mkdir(exist_ok=True)
-        if audio_type == 'wav':
+        if ext == '.wav':
             # cmd = f"ffmpeg -nostdin -threads 0 -i {audiofile} -f s16le -ac 1 -acodec pcm_s16le -ar {sr} -"
             # !ffmpeg -i testdata/ntt.meeting.mp4-0_0.mp3 -ac 1 -ar 16000 testdata/ntt.meeting_16k.wav
             ac = '-ac 1'
             ar = '-ar 16000'
             if ssec == 0 and esec == 0:
-                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
+                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {output_path}'
             else:
-                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {audio_file}'
-        elif audio_type == 'mp3':
+                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec pcm_s16le {ac} {ar} {output_path}'
+        elif ext == '.mp3':
             if ssec == 0 and esec == 0:
-                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec mp3 -b:a 192k {audio_file}'
+                cmds = f'{FFMPEG} -i {mp4file} -vn -acodec mp3 -b:a 192k {output_path}'
             else:
-                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec mp3 -b:a 192k {audio_file}'
+                cmds = f'{FFMPEG} -ss {ssec} -to {esec} -i {mp4file} -vn -acodec mp3 -b:a 192k {output_path}'
 
         print(cmds)
         subprocess.run(cmds.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    return audio_file.as_posix()
+    return output_path.as_posix()
 
 def replace_mp4_audio(mp4file, audioin, mp4output):
     cmds = f'{FFMPEG} -i {mp4file} -i {audioin} -c:v copy -map 0:v:0 -map 1:a:0 -shortest {mp4output}'
@@ -151,15 +148,19 @@ def play_beep(frequency=440, dur_sec=0.5):
     beep = Sine(frequency).to_audio_segment(duration=int(dur_sec*1000))
     play(beep)
 
-
 def play_audio(file_path: str,
                *,
                ranges: list[Segment],
                speed: float = 1.0,
                start_end_notifier = True,
+               mute_sec = 2,
                output_m4a:str = ""):
-    # Load the full audio file
-    audio = AudioSegment.from_file(file_path)
+    if len(ranges) == 0: return
+    # Load the full audio file and cache the audio inst.
+    if play_audio.file_path != file_path:
+        play_audio.file_path = file_path
+        play_audio.audio = AudioSegment.from_file(file_path)
+    audio = play_audio.audio
 
     if start_end_notifier:
         beep_duration = 100  # duration in milliseconds
@@ -167,7 +168,7 @@ def play_audio(file_path: str,
         beep_volume = -20  # reduce the beep volume in dB
         beep_start = generators.Sine(450).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
         beep_end = generators.Sine(600).to_audio_segment(duration=beep_duration).apply_gain(beep_volume)
-        mute = AudioSegment.silent(duration=1000)
+        mute = AudioSegment.silent(duration=int(mute_sec*1000))
 
 
     segments = []
@@ -220,6 +221,9 @@ def play_audio(file_path: str,
 
         while play_obj.is_playing():
             time.sleep(0.05)
+play_audio.file_path = None
+play_audio.audio = None
+
 
 def stop_plays():
     simpleaudio.stop_all()
@@ -392,4 +396,76 @@ def audio_to_mp4(audio_path, out_path):
 #     mp4file = 'testdata/ntt.meeting.mp4'
 #     get_audio(mp4file, start_time=720, end_time=1500, audio_type='wav')
 
+
+def compress_mp4(input_path: Path|str, output_path: Path|str,
+                 crf: int = 23, preset: str = "medium") -> None:
+    """
+    Compress an MP4 file using ffmpeg with specified CRF and preset.
+
+    Args:
+        input_path (str): Path to the input MP4 file.
+        output_path (str): Path where the compressed MP4 file will be saved.
+        crf (int): Constant Rate Factor for controlling quality. Lower values mean better quality.
+        preset (str): Preset for compression speed. Options include "ultrafast", "superfast", "veryfast",
+                      "faster", "fast", "medium", "slow", "slower", "veryslow".
+
+    Returns:
+        None
+
+    Raises:
+        AssertionError: If the input file does not exist.
+    """
+    assert Path(input_path).exists(), f"Input file {input_path} does not exist."
+    if Path(output_path).exists():
+        print(f"{output_path} already exists")
+        return
+
+    FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+    cmd = [
+        *FFMPEG.split(),
+        '-i', input_path,
+        *f'-vcodec libx264 -crf {crf}'.split(),
+        # '-preset', preset,
+        output_path,
+    ]
+    subprocess.run(cmd, check=True)
+
+# Example usage:
+# compress_mp4("input.mp4", "output_compressed.mp4", crf=28, preset="fast")
+
+
+import subprocess
+
+def get_audio_source(tag = 'a2dp_sink'):
+    result = subprocess.run(
+        ["pactl", "list", "short", "sources"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    audio_source = [line for line in result.stdout.splitlines() if tag in line]
+    audio_source = audio_source[0].split('\t')[1]
+    return audio_source
+
+
+def record_system_audio(output_m4a = "system_out.m4a"):
+    output_wav = '/tmp/system_out.wav'
+    audio_source = get_audio_source()
+    command = [
+        *"ffmpeg -nostdin -loglevel warning -threads 0 -y".split(),
+        "-f", "pulse",
+        "-i", audio_source,
+        output_wav
+    ]
+
+    try:
+        print("Recording... Press Ctrl+C to stop.")
+        subprocess.run(command)
+    except KeyboardInterrupt:
+        print("\nRecording stopped.")
+        command = [
+            *"ffmpeg -nostdin -loglevel warning -threads 0".split(),
+            "-i", output_wav, "-c:a", "aac", "-b:a", "192k", output_m4a
+        ]
+        subprocess.run(command, check=True)
 

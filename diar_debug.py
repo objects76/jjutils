@@ -657,7 +657,7 @@ class DebugDiarUI:
         self.rename_history = dict() # stag => ntag
 
         self.annotations = []
-        self.current_seg = Segment(0,0)
+        self.current_seg = Segment(self.roi_crop.start, self.roi_crop.start)
 
 
     def set_videofile(self, video_path):
@@ -759,6 +759,7 @@ class DebugDiarUI:
         if self.speaker_filter != 'OVERLAPPED' and segment_speaker == 'OVERLAPPED':
             return
         # self.speaker_filter # speaker filter value in combobox
+        assert end-start > 0, f"{start}~{end}, {segment_speaker}"
 
         self.player.play(start, end)
         self.player.draw_text(
@@ -921,13 +922,18 @@ class DebugDiarUI:
             trk = get_prev_seg(self.current_seg, self.current_anno)
         else:
             trk = get_current_seg(self.current_seg, self.current_anno)
-        if trk is None: return
+        if trk is None:
+            print(f'trk is None, {direction}, {self.current_seg}')
+            return
+
+        # print(f"before: {self.current_seg}, {direction=}")
 
         self.current_seg, speaker_tag = trk
         assert self.current_seg
         assert speaker_tag
         seg = self.current_seg&self.roi_crop
-        range = f"{to_hhmmss(seg.start)} ~ {to_hhmmss(seg.end)} / <span style='color: green;'>{seg.start:.3f} ~ {seg.end:.3f}</span> ({seg.duration:.3f})"
+        segstr = f"Segment({seg.start:.3f}, {seg.end:.3f})   {seg.duration:.3f} sec"
+        range = f"{to_hhmmss(seg.start)} ~ {to_hhmmss(seg.end)} / <span style='color: green;'>{segstr}</span>"
 
         self.update_anno_ui((seg,speaker_tag,None))
 
@@ -937,7 +943,9 @@ class DebugDiarUI:
                               f"{text_ja}<br>  {text_ko}")
 
         # if self.vlc: self.vlc.stop()
-        self._play(speaker_tag, seg.start, seg.end)
+        assert seg.start < seg.end, f"{seg}, {self.current_seg= }, {self.roi_crop}"
+        if seg.duration > 0:
+            self._play(speaker_tag, seg.start, seg.end)
 
     def _interact_video(self, label='', ui=None):
         count = len(self.roi_tracks)

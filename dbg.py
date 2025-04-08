@@ -72,7 +72,7 @@ def devlog(*argv, **kwargv):
     kwargv['end'] = kwargv.get('end', '') + f" at {caller}() {src_path}:{line_no}\n"
     print(*argv, **kwargv)
 
-def set_default_logger():
+def set_default_logger(source=True):
     """기본 로거를 설정합니다."""
     logging.basicConfig(level=logging.WARNING,
                         format='%(asctime)s - %(name)s - %(levelname)s: %(message)s',
@@ -101,16 +101,16 @@ def set_default_logger():
             record.name = record.name[-15:]
             format = super().format(record)
 
+            # full line coloring
             if record.levelno >= logging.WARNING:
                 format = self.COLORS.get(record.levelno, "") + format.replace('\33[0m', '') + "\33[0m"
             return format
 
     for handler in logging.getLogger().handlers:
-        handler.setFormatter(CustomFormatter(
-            '%(name)s - %(color_code)s%(levelname)s%(reset_code)s: '
-            '%(message)s at %(funcName)s() %(pathname)s:%(lineno)d',
-            datefmt="%H:%M:%S"
-        ))
+        handler.setFormatter(CustomFormatter((
+            '%(name)s - %(color_code)s%(levelname)s%(reset_code)s: %(message)s'
+            ' at %(funcName)s() %(pathname)s:%(lineno)d' if source else ''
+        ), datefmt="%H:%M:%S"))
 
 def open_file(filename: str) -> None:
     """파일을 엽니다.
