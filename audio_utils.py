@@ -374,15 +374,32 @@ get_audio_clips._audio_data = {}
 
 
 import subprocess
-def audio_to_mp4(audio_path, out_path):
+
+def audio_filter(input_audio, af_filter):
+    output_audio = Path('/tmp') / Path(input_audio).name
+    output_audio = str(output_audio)
+    af_filter = af_filter.replace(" ", "").replace("\t", "").replace("\n", "")
+
+    FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+    cmd = f'{FFMPEG} -i {input_audio} -af {af_filter} {output_audio}'
+    print(cmd.split())
+    subprocess.run(cmd.split(), check=True)
+    return output_audio
+
+def audio_to_mp4(audio_path, out_path, af_filter = ""):
     assert Path(audio_path).exists()
     if Path(out_path).exists():
         print(out_path, "already exists")
         return
+
+    if af_filter:
+        audio_path = audio_filter(audio_path, af_filter)
+
     jpg_path = 'testdata/1280x720-bg.jpg'
     FFMPEG = 'ffmpeg -nostdin -loglevel warning -threads 0 -y'
+
     cmd = f"{FFMPEG} -i {audio_path} -loop 1 -i {jpg_path} -c:v libx264 -c:a aac -b:a 192k -shortest {out_path}"
-    print(cmd)
+    print(cmd.split())
     subprocess.run(cmd.split(), check=True)
 #
 # audio_to_mp4(
