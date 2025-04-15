@@ -886,14 +886,14 @@ class DebugDiarUI:
     def update_anno_ui(self, trk):
         # restore old segment
         if self.cur_track:
-            del self.current_anno[*self.cur_track]
+            del self.current_anno[ self.cur_track[0], self.cur_track[1] ]
             self.cur_track = None
 
         if trk is None: return
 
         seg,tn,label = trk
         self.cur_track = (seg,'_CUR')
-        self.current_anno[*self.cur_track] = "CUR"
+        self.current_anno[ self.cur_track[0], self.cur_track[1] ] = "CUR"
 
         # readjust notebook.crop
         if seg not in notebook.crop:
