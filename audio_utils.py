@@ -144,9 +144,11 @@ from pydub import AudioSegment
 from pydub.generators import Sine
 from pydub.playback import play
 
-def play_beep(frequency=440, dur_sec=0.5):
+def play_beep(frequency=440, dur_sec=0.5, sleep_sec=0):
     beep = Sine(frequency).to_audio_segment(duration=int(dur_sec*1000))
     play(beep)
+    if sleep_sec>0:
+        time.sleep(sleep_sec)
 
 def play_audio(file_path: str,
                *,
