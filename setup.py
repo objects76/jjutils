@@ -28,30 +28,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/objects76/jjutils",
-    py_modules=[
-        "jjutils.audio_utils",
-        "jjutils.dbg",
-        "jjutils.notebook_utils",
-        "jjutils.clrs",
-        "jjutils.diar_utils",
-        "jjutils.file_utils",
-        "jjutils.func_trace",
-        "jjutils.gmail",
-        "jjutils.hf",
-        "jjutils.hf_utils",
-        "jjutils.llmutils",
-        "jjutils.logging",
-        "jjutils.pandas_util",
-        "jjutils.prompt_utils",
-        "jjutils.replace_txt",
-        "jjutils.scope_fn",
-        "jjutils.static",
-        "jjutils.diar_debug",
-        "jjutils.video_utils",
-        # struct.py는 파이썬 내장 모듈과 충돌하므로 제외
-        # "jjutils.struct",
-    ],
-    python_requires=">=3.9",  # Python 3.9 이상으로 변경
+    packages=find_packages(),
+    python_requires=">=3.10",  # Python 3.9 이상으로 변경
     install_requires=[
         # 필요한 의존성 패키지들을 여기에 추가하세요
         # 예: "numpy>=1.20.0",
