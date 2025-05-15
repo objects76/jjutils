@@ -29,9 +29,16 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/objects76/jjutils",
     packages=find_packages(),
-    python_requires=">=3.10",  # Python 3.9 이상으로 변경
+    python_requires=">=3.10",
     install_requires=[
         # 필요한 의존성 패키지들을 여기에 추가하세요
         # 예: "numpy>=1.20.0",
+    ],
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
     ],
 )
