@@ -1,6 +1,6 @@
-
 import inspect
-from .clrs import yellow, green, blue
+import jjutils.clrs as clrs
+from jjutils.clrs import yellow, green, blue
 
 
 import logging
