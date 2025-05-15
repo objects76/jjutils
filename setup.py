@@ -1,6 +1,7 @@
 from setuptools import setup, find_packages
 import os
 import re
+import sys
 
 # 버전 정보를 읽어오는 함수
 def get_version():
@@ -27,14 +28,37 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/objects76/jjutils",
-    packages=find_packages(include=["."]),
-    python_requires=">=3.10",
+    py_modules=[
+        "jjutils.audio_utils",
+        "jjutils.dbg",
+        "jjutils.notebook_utils",
+        "jjutils.clrs",
+        "jjutils.diar_utils",
+        "jjutils.file_utils",
+        "jjutils.func_trace",
+        "jjutils.gmail",
+        "jjutils.hf",
+        "jjutils.hf_utils",
+        "jjutils.llmutils",
+        "jjutils.logging",
+        "jjutils.pandas_util",
+        "jjutils.prompt_utils",
+        "jjutils.replace_txt",
+        "jjutils.scope_fn",
+        "jjutils.static",
+        "jjutils.diar_debug",
+        "jjutils.video_utils",
+        # struct.py는 파이썬 내장 모듈과 충돌하므로 제외
+        # "jjutils.struct",
+    ],
+    python_requires=">=3.9",  # Python 3.9 이상으로 변경
     install_requires=[
         # 필요한 의존성 패키지들을 여기에 추가하세요
         # 예: "numpy>=1.20.0",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
