@@ -325,7 +325,10 @@ from pyannote.core import Segment, Timeline, Annotation
 from typing import Final
 
 
-def play_tensor(audio_tensor:torch.Tensor, play_sec:float=999, sr=16000):
+def play_tensor(audio_tensor:torch.Tensor|np.ndarray, play_sec:float=999, sr=16000):
+    if isinstance(audio_tensor, np.ndarray):
+        audio_tensor = torch.from_numpy(audio_tensor)
+
     if audio_tensor.dtype == torch.int16:
         audio_tensor = audio_tensor.float() / 32768.0
         # print(audio_tensor.shape, audio_tensor.dtype)
@@ -488,3 +491,52 @@ def record_system_audio(output_m4a = "system_out.m4a"):
         ]
         subprocess.run(command, check=True)
 
+
+
+def get_chunk(pcm_norm, seg, play_margin:float=0) -> torch.Tensor|np.ndarray:
+    assert seg
+    s,e = seg.start+play_margin, seg.end+play_margin
+    chunk = pcm_norm[:, int(s*16000):int(e*16000)]
+    assert chunk.ndim==2 and chunk.shape[1]> 100, chunk.shape
+    return chunk
+
+
+def play_button(pcm_norm:torch.Tensor|np.ndarray, seg:Segment|None,
+                *,
+                desc:str='play', play_margin:float=0, with_Audio:bool=False):
+    from IPython.display import Audio, display
+    from ipywidgets import widgets
+    if seg:
+        desc = f"{desc}: {seg.start:.3f}~{seg.end:.3f}, dur={seg.duration:.3f}"
+    if isinstance(pcm_norm, np.ndarray):
+        pcm_norm = torch.from_numpy(pcm_norm)
+
+    pcm_norm = pcm_norm.type(torch.float32)
+    if pcm_norm.ndim == 1:
+        pcm_norm = pcm_norm.unsqueeze(0)
+
+    if with_Audio:
+        try:
+            chunk = get_chunk(pcm_norm, seg, play_margin) if seg else pcm_norm
+            display(Audio( chunk, rate=16000))
+        except Exception as ex:
+            print('\33[91m', ex, '\33[0m')
+            print(chunk.shape)
+    else:
+        button = widgets.Button(description=desc, icon='play',
+                                layout=widgets.Layout(width='450px'))
+        handle = display(button)
+        def play_segment(b, seg:Segment|None):
+            try:
+                if b.description[-1] == '*': b.description = b.description[:-2]
+                chunk = get_chunk(pcm_norm, seg, play_margin) if seg else pcm_norm
+                play_tensor( chunk )
+                b.description += ' *'
+            except Exception as ex:
+                print('\33[91m', ex, '\33[0m')
+                print(chunk.shape)
+
+        button.on_click(lambda b: play_segment(b, seg))
+    return None
+
+# %%
