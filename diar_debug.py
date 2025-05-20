@@ -419,7 +419,7 @@ class VlcPlayer:
 
 
     clr_index = 0
-    def draw_text(self, text, *, clr_index:int = -1, rgba:list[float]|None = None):
+    def draw_videotext(self, text, *, clr_index:int = -1, rgba:list[float]|None = None):
         if rgba is None:
             if clr_index < 0:
                 clr_index = VlcPlayer.clr_index
@@ -632,7 +632,7 @@ def get_prev_seg(tick: float | Segment, anno: Annotation) -> tuple[Segment, str]
 
 
 
-
+# called from play_rttm in devutils.py
 class DebugDiarUI:
     _player = None
     def __init__(self, *, video_path = None, head_play=None, tail_play=None, transcribe=False) -> None:
@@ -762,7 +762,7 @@ class DebugDiarUI:
         assert end-start > 0, f"{start}~{end}, {segment_speaker}"
 
         self.player.play(start, end)
-        self.player.draw_text(
+        self.player.draw_videotext(
             f"{segment_speaker}\ndur={round(end-start,3)} sec, after={round(start-self.prev_end,3)}",
             # clr_index= self.speaker_order.get(tag, -1)
             rgba= notebook[segment_speaker][2] # type: ignore
@@ -771,47 +771,47 @@ class DebugDiarUI:
         self.prev_start = start
         self.prev_end = end
 
-    def get_text(self, start, end):
-        if not self.whisper:
-            return ('', '')
+#     def get_text(self, start, end):
+#         if not self.whisper:
+#             return ('', '')
+#
+#         trans = self.whisper.transcribe(start, end, language=self.audio_language)
+#         text_ja = trans['text']
+#         if self.transcribe and self.audio_language != 'ko':
+#             text_ko = translate(text_ja)
+#         else:
+#             text_ko = ''
+#         return (text_ja, text_ko)
 
-        trans = self.whisper.transcribe(start, end, language=self.audio_language)
-        text_ja = trans['text']
-        if self.transcribe and self.audio_language != 'ko':
-            text_ko = translate(text_ja)
-        else:
-            text_ko = ''
-        return (text_ja, text_ko)
-
-    async def a_transcribe(self, trk, details):
-        if not self.whisper: return
-        import concurrent.futures
-        try:
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                dur = trk.seg.end - trk.seg.start
-
-                text_ja = text_ko = ''
-                if self.is_speaker(trk.speaker_tag):
-                    text_ja, text_ko = await loop.run_in_executor(
-                        executor,
-                        self.get_text, trk.start_sec,trk.end_sec)
-                    if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
-                    if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
-                    # print(text_ja, '\n', text_ko)
-
-                tag = trk.speaker_tag
-                range = (
-                    f"{to_hhmmss(trk.start_sec)} ~ {to_hhmmss(trk.end_sec)} /"
-                    f" <span style='color: green;'>{trk.start_sec:.3f} ~ {trk.end_sec:.3f}</span> ({dur:.3f})"
-                )
-                details.value = (
-                    f"Range= {range}     <span style='color: red;'>{tag}</span><br>"
-                    f"  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
-                )
-                return None
-        except RuntimeError as ex:
-            print('a_transcribe:', ex)
+#     async def a_transcribe(self, trk, details):
+#         if not self.whisper: return
+#         import concurrent.futures
+#         try:
+#             loop = asyncio.get_event_loop()
+#             with concurrent.futures.ThreadPoolExecutor() as executor:
+#                 dur = trk.seg.end - trk.seg.start
+#
+#                 text_ja = text_ko = ''
+#                 if self.is_speaker(trk.speaker_tag):
+#                     text_ja, text_ko = await loop.run_in_executor(
+#                         executor,
+#                         self.get_text, trk.start_sec,trk.end_sec)
+#                     if len(text_ja) > 85 and self.player.play_boundary: text_ja = text_ja[:40] + ' ... ' + text_ja[-40:]
+#                     if len(text_ko) > 85 and self.player.play_boundary: text_ko = text_ko[:40] + ' ... ' + text_ko[-40:]
+#                     # print(text_ja, '\n', text_ko)
+#
+#                 tag = trk.speaker_tag
+#                 range = (
+#                     f"{to_hhmmss(trk.start_sec)} ~ {to_hhmmss(trk.end_sec)} /"
+#                     f" <span style='color: green;'>{trk.start_sec:.3f} ~ {trk.end_sec:.3f}</span> ({dur:.3f})"
+#                 )
+#                 details.value = (
+#                     f"Range= {range}     <span style='color: red;'>{tag}</span>"
+#                     # f"<br>  {type(self.whisper).__name__}: {text_ja}<br>  > {text_ko}"
+#                 )
+#                 return None
+#         except RuntimeError as ex:
+#             print('a_transcribe:', ex)
 
     def rename_speakers(self, tags:dict|str):
         if isinstance(tags, dict):
@@ -907,12 +907,7 @@ class DebugDiarUI:
         # update_display(self.anno, display_id=self.disp_id)
         # for i, ref in enumerate(self.anno_refs):
         #     update_display( ref, display_id=self.disp_id+f"_ref{i}")
-
-        if self.log_dispid is None:
-            self.log_dispid = 'logdisp'
-            display("", display_id=self.log_dispid)
         update_display(f"{seg=}, {notebook.crop=}", display_id='log')
-    log_dispid = None
 
 
     def play_segment(self, direction:int):
@@ -1034,7 +1029,16 @@ class DebugDiarUI:
         dd_annos = widgets.Dropdown(description='Annotation: ',
                                     options=anno_titles, value=anno_titles[-1])
         dd_annos.observe(self._select_annotation, names='value')
-        display(widgets.HBox([dd_annos]), display_id="dropdown_annotation")
+        # display(widgets.HBox([dd_annos]), display_id="dropdown_annotation")
+        display(dd_annos, display_id="dropdown_annotation")
+
+        # details widget
+        self.details = widgets.HTML(
+            value="details here",
+            placeholder='Details will be shown here',
+            description='Details:',
+        )
+        # display(self.details, display_id="details_widget")
         self._select_annotation({"new": anno_titles[-1]})
 
         # speaker dropdown

@@ -17,6 +17,10 @@ green = text_color(92)
 yellow = text_color(93)
 blue = text_color(94)
 
+def is_remote_ssh() -> bool:
+    return os.environ.get('SSH_CONNECTION') is not None
+
+
 def fname(inc_line: bool = False) -> str:
     """현재 실행 중인 함수의 이름을 반환합니다.
 

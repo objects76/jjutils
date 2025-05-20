@@ -1,6 +1,6 @@
 import inspect
 import jjutils.clrs as clrs
-from jjutils.clrs import yellow, green, blue
+# from jjutils.clrs import yellow, green, blue
 
 
 import logging
@@ -64,13 +64,13 @@ class out:
         try:
             for k in txt.keys():
                 v = str(txt[k])
-                if label: print(f'{label}: '|blue, end='')
+                if label: print(f'{label}: ', end='')
                 for m in out.markers:
-                    v = v.replace(m, m|yellow)
-                print(f"{k|green}= {v}")
+                    v = v.replace(m, m)
+                print(f"{k}= {v}")
         except:
             for m in out.markers:
-                txt = str(txt).replace(m, m|yellow)
-            if label: print(f'{label}= '|blue, end='')
+                txt = str(txt).replace(m, m)
+            if label: print(f'{label}= ', end='')
             print(txt)
 

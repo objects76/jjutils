@@ -511,6 +511,8 @@ def play_button(pcm_norm:torch.Tensor|np.ndarray, seg:Segment|None,
     if isinstance(pcm_norm, np.ndarray):
         pcm_norm = torch.from_numpy(pcm_norm)
 
+    with_Audio = with_Audio or os.environ.get('SSH_CONNECTION') is not None
+
     pcm_norm = pcm_norm.type(torch.float32)
     if pcm_norm.ndim == 1:
         pcm_norm = pcm_norm.unsqueeze(0)
