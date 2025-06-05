@@ -1,24 +1,32 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import os
 import inspect
+import os
 import logging
 import subprocess
 import sys
 import time
 from typing import Any
 
-from .clrs import text_color
+from rich import get_console
+get_console().is_jupyter = False
 
-# Define text colors
-red = text_color(91)
-green = text_color(92)
-yellow = text_color(93)
-blue = text_color(94)
+# from .clrs import text_color
+#
+# # Define text colors
+# red = text_color(91)
+# green = text_color(92)
+# yellow = text_color(93)
+# blue = text_color(94)
 
 def is_remote_ssh() -> bool:
     return os.environ.get('SSH_CONNECTION') is not None
+
+
+def is_interactive(fixed:bool|int = True) -> bool:
+    sysvalue = hasattr(sys, 'ps1') or bool(sys.flags.interactive) # type:ignore
+    return sysvalue and bool(fixed)
 
 
 def fname(inc_line: bool = False) -> str:
@@ -59,6 +67,11 @@ def static_vars(**kwargs):
             setattr(func, k, kwargs[k])
         return func
     return decorate
+
+def dprint(*argc, **kwarg):
+    caller_frame = inspect.currentframe().f_back # type:ignore
+    if caller_frame.f_locals.get('debug', False): # type:ignore
+        print(*argc, **kwarg, sep=', ')
 
 def devlog_null(*argv, **kwargv): pass
 def devlog(*argv, **kwargv):
@@ -185,24 +198,21 @@ class StopExecution(Exception):
     def _render_traceback_(self):
         print('stop execution')
 
-class ExecutionTime:
-    """실행 시간을 측정하는 클래스."""
-    def __init__(self) -> None:
-        self.start()
+from contextlib import contextmanager
+import traceback
 
-    def start(self) -> None:
-        """타이머를 시작합니다."""
-        self.tick = time.time()
-
-    def check(self, name: str) -> None:
-        """경과 시간을 출력합니다.
-
-        Args:
-            name (str): 측정할 이름.
-        """
-        elapsed = time.time() - self.tick
-        print(f'time of {name}: {elapsed:.1f}sec'|yellow)
-        self.tick = time.time()
+@contextmanager
+def exception_handler():
+    try:
+        yield
+    except Exception as e:
+        print(f"{type(e).__name__}: {e}")
+        tb_exception = traceback.TracebackException.from_exception(
+            e, capture_locals=True
+        )
+        for line in tb_exception.format():
+            line = line[:line.find('stack_trace = ')]
+            print('-', line)
 
 if __name__ == '__main__':
     print(fmt(1, 'abc', list(), f'100+100={100+100}'))

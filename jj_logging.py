@@ -7,6 +7,29 @@ import logging
 import logging.handlers
 from pathlib import Path
 
+def working_log(*args: str, **kwargs) -> None:
+    """Logs the provided messages to a work log file and prints them to the console.
+
+    Args:
+        *args: Messages to log.
+        **kwargs: Additional keyword arguments for print function.
+    """
+    from datetime import datetime
+    current_day: str = datetime.now().strftime("%Y-%m-%d")
+
+    logfile = Path("./work-log.ini")
+    day_logged = False
+    if logfile.exists():
+        with open(logfile, 'r') as log_file:
+            day_logged = any(current_day in line for line in log_file)
+
+    with open(logfile, 'a') as log_file:
+        if not day_logged:
+            log_file.write(f"\n{current_day}:\n")
+        log_file.write(" ".join(args) + "\n")
+    print(*args, **kwargs)
+
+
 def get_logger(logfile, name=None):
 
     logger = logging.getLogger( name if name else Path(logfile).stem)

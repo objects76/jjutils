@@ -2,6 +2,8 @@
 #%% - m3u
 from typing import cast, Iterable
 import sys, os, re
+
+from dbg import is_interactive
 if os.path.abspath('.') not in sys.path: sys.path.append(os.path.abspath('.'))
 
 # import os, huggingface_hub # !pip install huggingface_hub[hf_transfer]
@@ -541,4 +543,68 @@ def play_button(pcm_norm:torch.Tensor|np.ndarray, seg:Segment|None,
         button.on_click(lambda b: play_segment(b, seg))
     return None
 
-# %%
+
+
+def display_audio(wave, label='', sr=16000, ):
+    import IPython.display as ipy
+    if isinstance(wave, list):
+        wave = torch.tensor(wave)
+    elif isinstance(wave, np.ndarray):
+        wave = torch.from_numpy(wave)
+    wave = wave.clone()
+
+    wave[..., 0] = 1
+    # wave[..., -1] = 1
+    audio_html = ipy.Audio(wave, rate=sr)._repr_html_()
+    ipy.display(ipy.HTML(f"<div style='display: flex; align-items: center;'>{audio_html}&nbsp;&nbsp;<pre>{label}</pre></div>"))
+
+#
+#
+#
+
+def get_chunk(pcm_norm, seg, play_margin:float=0) -> torch.Tensor|np.ndarray:
+    assert seg
+    assert pcm_norm.ndim==1
+    s,e = seg.start+play_margin, seg.end+play_margin
+    return pcm_norm[int(s*16000):int(e*16000)]
+
+
+def play_button(pcm_norm:torch.Tensor|np.ndarray, seg:Segment|None,
+                *,
+                desc:str='play', play_margin:float=0):
+    is_ssh = os.environ.get('SSH_CONNECTION') is not None
+
+    if seg:
+        desc = f"{desc}: {seg.start:.3f}~{seg.end:.3f}, dur={seg.duration:.3f}"
+    if isinstance(pcm_norm, np.ndarray):
+        pcm_norm = torch.from_numpy(pcm_norm)
+
+    pcm_norm = pcm_norm.squeeze().type(torch.float32)
+
+    if is_ssh:
+        try:
+            chunk = get_chunk(pcm_norm, seg, play_margin) if seg else pcm_norm
+            display_audio( chunk, desc)
+        except Exception as ex:
+            print('\33[91m', ex, '\33[0m')
+            print(chunk.shape)
+    else:
+        import IPython.display as ipy
+        from ipywidgets import widgets
+        desc = desc.replace('<b>', '').replace('</b>', '')
+        desc = desc.replace('<i>', '').replace('</i>', '')
+        button = widgets.Button(description=desc, icon='play',
+                                layout=widgets.Layout(width='450px'))
+        handle = ipy.display(button)
+        def play_segment(b, seg:Segment|None):
+            try:
+                if b.description[-1] == '*': b.description = b.description[:-2]
+                chunk = get_chunk(pcm_norm, seg, play_margin) if seg else pcm_norm
+                play_tensor( chunk )
+                b.description += ' *'
+            except Exception as ex:
+                print('\33[91m', ex, '\33[0m')
+                print(chunk.shape)
+
+        button.on_click(lambda b: play_segment(b, seg))
+    return None
