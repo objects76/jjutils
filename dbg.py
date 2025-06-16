@@ -211,6 +211,8 @@ def exception_handler():
             e, capture_locals=True
         )
         for line in tb_exception.format():
+            if 'in exception_handler' in line:
+                continue
             line = line[:line.find('stack_trace = ')]
             print('-', line)
 
