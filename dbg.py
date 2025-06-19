@@ -201,6 +201,9 @@ class StopExecution(Exception):
 from contextlib import contextmanager
 import traceback
 
+
+# with exception_handler():
+#     ...
 @contextmanager
 def exception_handler():
     try:
